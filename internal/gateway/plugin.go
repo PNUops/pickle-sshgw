@@ -74,9 +74,13 @@ func (p *Plugin) passwordCallback(conn libplugin.ConnMetadata, password []byte) 
 	return &libplugin.Upstream{
 		Host: r.IP,
 		Port: int32(r.Port),
-		// v1 has no per-VM host key in the route response; the gw→VM hop stays
-		// inside the platform network (172.29/16). Host-key pinning arrives
-		// with the roadmap identity work.
+		// v1 has no per-VM host key in the route response, so this hop is not
+		// host-key-verified. Trust rests on the hop staying inside the guest
+		// bridge (172.29/16): an attacker must already be on that L2 segment to
+		// spoof the target and capture the passed-through password. Closing that
+		// L2 path is launch gate G1 (per-NIC ipfilter/anti-spoof); host-key
+		// pinning here arrives with the roadmap per-user-key work. See
+		// docs/plan/05-ssh-access.md and docs/plan/12-production-gates.md.
 		IgnoreHostKey: true,
 		UserName:      r.User,
 		// Pass the client's typed password straight through to the VM sshd.
