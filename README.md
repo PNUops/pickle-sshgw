@@ -1,7 +1,7 @@
 # pickle-sshgw
 
 SSH gateway for Pickle: routes `ssh <vmslug>@ssh.pickle.pnuops.com` to the
-student's VM after authorizing against pickle-api. Off-campus reachability is an
+user's VM after authorizing against pickle-api. Off-campus reachability is an
 AWS Lightsail relay: the campus opens an **outbound** WireGuard tunnel to it and
 Lightsail's HAProxy (`mode tcp`, `send-proxy-v2`) forwards public `:22` →
 tunnel → `sshgw:22` (the campus firewall blocks inbound, so a plain relay cannot

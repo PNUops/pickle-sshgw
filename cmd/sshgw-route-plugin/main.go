@@ -1,7 +1,7 @@
 // Command sshgw-route-plugin is the sshpiperd gRPC plugin for the Pickle SSH
 // gateway. sshpiperd launches it as a subprocess and calls its PasswordCallback
 // for each connection; the plugin resolves the SSH slug against pickle-api
-// (POST /internal/sshgw/route) and pipes the session to the student's VM,
+// (POST /internal/sshgw/route) and pipes the session to the user's VM,
 // passing the typed password through.
 //
 // Configuration is from the environment (or --api-base / --token flags):
