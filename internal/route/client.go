@@ -72,6 +72,11 @@ type Route struct {
 	IP   string `json:"ip"`
 	Port int    `json:"port"`
 	User string `json:"user"`
+	// HostKeys are the VM's pinned host public keys in authorized_keys one-line
+	// format (v2). The gateway verifies the upstream host key against this set
+	// and refuses on mismatch. An empty array is a contract violation Resolve
+	// rejects fail-closed — the gateway never pipes to an unverifiable host.
+	HostKeys []string `json:"hostKeys"`
 }
 
 // Denial is a structured, non-transport rejection. Reason carries the
@@ -105,10 +110,24 @@ func (d *Denial) Machine() string {
 	return d.Code
 }
 
-type routeRequest struct {
-	Slug     string `json:"slug"`
-	SourceIP string `json:"sourceIp"`
+// Request is the route-resolution request body (v2, per docs/api/internal.md
+// Link 1). AuthMethod is always sent; PublicKeyFingerprint travels only on the
+// publickey path and ConnectionID only when known — both are omitted otherwise
+// so the wire matches the contract's field-presence rules.
+type Request struct {
+	Slug                 string `json:"slug"`
+	SourceIP             string `json:"sourceIp"`
+	AuthMethod           string `json:"authMethod"`
+	PublicKeyFingerprint string `json:"publicKeyFingerprint,omitempty"`
+	ConnectionID         string `json:"connectionId,omitempty"`
 }
+
+// Auth method values for Request.AuthMethod, matching which sshpiperd callback
+// fired.
+const (
+	AuthPublicKey = "publickey"
+	AuthPassword  = "password"
+)
 
 // denialBody carries both possible discriminators; whichever the server sends
 // is populated.
@@ -117,27 +136,27 @@ type denialBody struct {
 	Code   string `json:"code"`
 }
 
-// Resolve calls POST /internal/sshgw/route. slug is the SSH username the client
-// supplied; sourceIP is the real client IP recovered from the PROXY header. On
-// success it returns *Route. A route/auth rejection returns a *Denial. Any
-// other failure (transport, bad status, unparseable body) returns a generic
-// error. Callers treat every non-nil error as "refuse the session".
-func (c *Client) Resolve(ctx context.Context, slug, sourceIP string) (*Route, error) {
-	body, err := json.Marshal(routeRequest{Slug: slug, SourceIP: sourceIP})
+// Resolve calls POST /internal/sshgw/route with the v2 request. On success it
+// returns *Route. A route/auth rejection returns a *Denial. Any other failure
+// (transport, bad status, unparseable body, or a 200 missing its pinned host
+// keys) returns a generic error. Callers treat every non-nil error as "refuse
+// the session".
+func (c *Client) Resolve(ctx context.Context, req Request) (*Route, error) {
+	body, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("route: marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		c.cfg.BaseURL+"/internal/sshgw/route", bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("route: build request: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+c.cfg.Token)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+c.cfg.Token)
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "application/json")
 
-	resp, err := c.http.Do(req)
+	resp, err := c.http.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("route: request failed: %w", err)
 	}
@@ -156,6 +175,9 @@ func (c *Client) Resolve(ctx context.Context, slug, sourceIP string) (*Route, er
 		}
 		if r.IP == "" || r.Port <= 0 || r.User == "" {
 			return nil, fmt.Errorf("route: 200 body missing ip/port/user: %q", string(raw))
+		}
+		if len(r.HostKeys) == 0 {
+			return nil, fmt.Errorf("route: 200 body has no hostKeys (fail-closed, refusing unverifiable host): %q", string(raw))
 		}
 		return &r, nil
 

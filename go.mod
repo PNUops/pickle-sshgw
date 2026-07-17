@@ -7,6 +7,7 @@ require (
 	github.com/sirupsen/logrus v1.9.4
 	github.com/tg123/sshpiper v1.5.4
 	github.com/urfave/cli/v2 v2.27.7
+	golang.org/x/crypto v0.52.0
 )
 
 require (

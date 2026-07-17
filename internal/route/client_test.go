@@ -7,12 +7,13 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
-// newServer spins a mock pickle-api that captures the request and replies with
-// the given status/body.
-func newServer(t *testing.T, status int, body string, capture *routeRequest, gotAuth *string) *httptest.Server {
+// newServer spins a mock pickle-api that captures the raw request body and
+// replies with the given status/body.
+func newServer(t *testing.T, status int, body string, capture *[]byte, gotAuth *string) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/internal/sshgw/route" {
@@ -23,7 +24,7 @@ func newServer(t *testing.T, status int, body string, capture *routeRequest, got
 		}
 		if capture != nil {
 			raw, _ := io.ReadAll(r.Body)
-			_ = json.Unmarshal(raw, capture)
+			*capture = raw
 		}
 		w.WriteHeader(status)
 		_, _ = io.WriteString(w, body)
@@ -39,29 +40,82 @@ func mustClient(t *testing.T, base string) *Client {
 	return c
 }
 
-func TestResolve_Success_RequestShapeAndAuth(t *testing.T) {
-	var req routeRequest
+func TestResolve_PublicKey_RequestShapeAndAuth(t *testing.T) {
+	var raw []byte
 	var auth string
-	srv := newServer(t, 200, `{"ip":"172.29.4.11","port":22,"user":"student"}`, &req, &auth)
+	srv := newServer(t, 200,
+		`{"ip":"172.29.4.11","port":22,"user":"student","hostKeys":["ssh-ed25519 AAAAC3Nza"]}`,
+		&raw, &auth)
 	defer srv.Close()
 
-	r, err := mustClient(t, srv.URL).Resolve(context.Background(), "team-alpha-a1b2", "203.0.113.7")
+	r, err := mustClient(t, srv.URL).Resolve(context.Background(), Request{
+		Slug: "team-alpha-a1b2", SourceIP: "203.0.113.7",
+		AuthMethod: AuthPublicKey, PublicKeyFingerprint: "SHA256:abc", ConnectionID: "conn-1",
+	})
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
 	if r.IP != "172.29.4.11" || r.Port != 22 || r.User != "student" {
 		t.Fatalf("bad route: %+v", r)
 	}
-	if req.Slug != "team-alpha-a1b2" || req.SourceIP != "203.0.113.7" {
-		t.Fatalf("bad request body: %+v", req)
+	if len(r.HostKeys) != 1 || r.HostKeys[0] != "ssh-ed25519 AAAAC3Nza" {
+		t.Fatalf("bad hostKeys: %+v", r.HostKeys)
 	}
 	if auth != "Bearer test-token" {
 		t.Fatalf("bad auth header: %q", auth)
 	}
+
+	var req Request
+	if err := json.Unmarshal(raw, &req); err != nil {
+		t.Fatalf("unmarshal captured body: %v", err)
+	}
+	if req.Slug != "team-alpha-a1b2" || req.SourceIP != "203.0.113.7" ||
+		req.AuthMethod != "publickey" || req.PublicKeyFingerprint != "SHA256:abc" ||
+		req.ConnectionID != "conn-1" {
+		t.Fatalf("bad request body: %+v", req)
+	}
+	// authMethod must always be present on the wire.
+	if !strings.Contains(string(raw), `"authMethod":"publickey"`) {
+		t.Fatalf("authMethod missing from wire body: %s", raw)
+	}
+}
+
+// The password path sends no fingerprint; omitempty must drop the field so the
+// wire body matches the contract (fingerprint only on the publickey path).
+func TestResolve_Password_OmitsFingerprint(t *testing.T) {
+	var raw []byte
+	srv := newServer(t, 200,
+		`{"ip":"172.29.4.11","port":22,"user":"student","hostKeys":["ssh-ed25519 AAAAC3Nza"]}`,
+		&raw, nil)
+	defer srv.Close()
+
+	_, err := mustClient(t, srv.URL).Resolve(context.Background(), Request{
+		Slug: "slug", SourceIP: "203.0.113.7", AuthMethod: AuthPassword,
+	})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if strings.Contains(string(raw), "publicKeyFingerprint") {
+		t.Errorf("publicKeyFingerprint must be omitted on password path: %s", raw)
+	}
+	if strings.Contains(string(raw), "connectionId") {
+		t.Errorf("connectionId must be omitted when empty: %s", raw)
+	}
+	if !strings.Contains(string(raw), `"authMethod":"password"`) {
+		t.Errorf("authMethod missing from wire body: %s", raw)
+	}
+}
+
+func mustResolve(c *Client) (*Route, error) {
+	return c.Resolve(context.Background(), Request{
+		Slug: "slug", SourceIP: "203.0.113.7", AuthMethod: AuthPublicKey,
+		PublicKeyFingerprint: "SHA256:abc", ConnectionID: "conn-1",
+	})
 }
 
 func TestResolve_Denials(t *testing.T) {
 	// Route-level denials carry {reason}; chain-level rejections carry {code}.
+	// v2 adds the per-user identity reason codes.
 	cases := []struct {
 		name       string
 		status     int
@@ -73,6 +127,10 @@ func TestResolve_Denials(t *testing.T) {
 		{"route_not_found", 404, `{"reason":"SSHGW_ROUTE_NOT_FOUND"}`, "SSHGW_ROUTE_NOT_FOUND", ""},
 		{"vm_not_running", 403, `{"reason":"SSHGW_VM_NOT_RUNNING"}`, "SSHGW_VM_NOT_RUNNING", ""},
 		{"vm_blocked", 403, `{"reason":"SSHGW_VM_BLOCKED"}`, "SSHGW_VM_BLOCKED", ""},
+		{"key_unknown", 403, `{"reason":"SSHGW_KEY_UNKNOWN"}`, "SSHGW_KEY_UNKNOWN", ""},
+		{"key_not_member", 403, `{"reason":"SSHGW_KEY_NOT_MEMBER"}`, "SSHGW_KEY_NOT_MEMBER", ""},
+		{"password_disabled", 403, `{"reason":"SSHGW_PASSWORD_DISABLED"}`, "SSHGW_PASSWORD_DISABLED", ""},
+		{"no_host_key", 403, `{"reason":"SSHGW_NO_HOST_KEY"}`, "SSHGW_NO_HOST_KEY", ""},
 		{"no_address", 403, `{"reason":"SSHGW_ROUTE_NO_ADDRESS"}`, "SSHGW_ROUTE_NO_ADDRESS", ""},
 		{"token_invalid", 401, `{"code":"AUTH_TOKEN_INVALID"}`, "", "AUTH_TOKEN_INVALID"},
 		{"access_denied", 403, `{"code":"ACCESS_DENIED"}`, "", "ACCESS_DENIED"},
@@ -83,7 +141,7 @@ func TestResolve_Denials(t *testing.T) {
 			srv := newServer(t, tc.status, tc.body, nil, nil)
 			defer srv.Close()
 
-			r, err := mustClient(t, srv.URL).Resolve(context.Background(), "slug", "203.0.113.7")
+			r, err := mustResolve(mustClient(t, srv.URL))
 			if r != nil {
 				t.Fatalf("expected nil route, got %+v", r)
 			}
@@ -113,7 +171,7 @@ func TestResolve_BadStatusIsGenericError(t *testing.T) {
 	srv := newServer(t, 500, `boom`, nil, nil)
 	defer srv.Close()
 
-	_, err := mustClient(t, srv.URL).Resolve(context.Background(), "slug", "203.0.113.7")
+	_, err := mustResolve(mustClient(t, srv.URL))
 	if err == nil {
 		t.Fatal("expected error on 500")
 	}
@@ -124,18 +182,34 @@ func TestResolve_BadStatusIsGenericError(t *testing.T) {
 }
 
 func TestResolve_Malformed200IsError(t *testing.T) {
-	srv := newServer(t, 200, `{"ip":"","port":0,"user":""}`, nil, nil)
+	srv := newServer(t, 200, `{"ip":"","port":0,"user":"","hostKeys":[]}`, nil, nil)
 	defer srv.Close()
 
-	if _, err := mustClient(t, srv.URL).Resolve(context.Background(), "slug", "203.0.113.7"); err == nil {
+	if _, err := mustResolve(mustClient(t, srv.URL)); err == nil {
 		t.Fatal("expected error on empty 200 body")
+	}
+}
+
+// A 200 with a valid target but no pinned host keys must be rejected: the
+// gateway may not pipe to a host it cannot verify.
+func TestResolve_EmptyHostKeysFailsClosed(t *testing.T) {
+	srv := newServer(t, 200, `{"ip":"172.29.4.11","port":22,"user":"student","hostKeys":[]}`, nil, nil)
+	defer srv.Close()
+
+	_, err := mustResolve(mustClient(t, srv.URL))
+	if err == nil {
+		t.Fatal("expected error when hostKeys is empty")
+	}
+	var d *Denial
+	if errors.As(err, &d) {
+		t.Fatalf("empty hostKeys must be a generic error, not a *Denial: %v", err)
 	}
 }
 
 func TestResolve_TransportErrorFailsClosed(t *testing.T) {
 	// Nothing listening: the client must return an error, never a route.
 	c := mustClient(t, "http://127.0.0.1:1") // unroutable/refused
-	if _, err := c.Resolve(context.Background(), "slug", "203.0.113.7"); err == nil {
+	if _, err := mustResolve(c); err == nil {
 		t.Fatal("expected transport error")
 	}
 }

@@ -4,13 +4,15 @@
 // (POST /internal/sshgw/route) and pipes the session to the user's VM,
 // passing the typed password through.
 //
-// Configuration is from the environment (or --api-base / --token flags):
+// Configuration is from the environment (or matching flags):
 //
-//	PICKLE_SSHGW_API_BASE  pickle-api base URL, e.g. http://172.30.1.20:8080
-//	PICKLE_SSHGW_TOKEN     shared bearer token (required — fail-closed if unset)
+//	PICKLE_SSHGW_API_BASE         pickle-api base URL, e.g. http://172.30.1.20:8080
+//	PICKLE_SSHGW_TOKEN            shared bearer token (required — fail-closed if unset)
+//	PICKLE_SSHGW_UPSTREAM_KEY_FILE platform ed25519 private key for the gateway→VM
+//	                              hop (default /etc/pickle/sshgw/upstream_ed25519_key)
 //
-// It is fail-closed: with no token the plugin refuses to start, and any route
-// lookup error refuses the SSH session.
+// It is fail-closed: with no token, or an unreadable/invalid upstream key, the
+// plugin refuses to start, and any route lookup error refuses the SSH session.
 package main
 
 import (
@@ -41,6 +43,12 @@ func main() {
 				Value:   route.DefaultTimeout,
 				EnvVars: []string{"PICKLE_SSHGW_TIMEOUT"},
 			},
+			&cli.StringFlag{
+				Name:    "upstream-key-file",
+				Usage:   "platform ed25519 private key for the gateway→VM hop",
+				Value:   "/etc/pickle/sshgw/upstream_ed25519_key",
+				EnvVars: []string{"PICKLE_SSHGW_UPSTREAM_KEY_FILE"},
+			},
 		},
 		CreateConfig: func(c *cli.Context) (*libplugin.SshPiperPluginConfig, error) {
 			client, err := route.New(route.Config{
@@ -51,7 +59,11 @@ func main() {
 			if err != nil {
 				return nil, err // fail-closed: no token / no base URL → refuse to start
 			}
-			return gateway.New(client).Config(), nil
+			platformKey, err := gateway.LoadUpstreamKey(c.String("upstream-key-file"))
+			if err != nil {
+				return nil, err // fail-closed: no/invalid upstream key → refuse to start
+			}
+			return gateway.New(client, platformKey).Config(), nil
 		},
 	})
 }
