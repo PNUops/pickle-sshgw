@@ -288,6 +288,19 @@ func TestVerifyHostKey_MissingEntry(t *testing.T) {
 	}
 }
 
+// A resolver that returns (nil, nil) violates the route.Client contract; both
+// callbacks must still refuse rather than panic on the nil route.
+func TestCallbacks_NilRouteNilErrFailsClosed(t *testing.T) {
+	fr := &fakeResolver{route: nil, err: nil}
+	p := newPlugin(t, fr)
+	if u, err := p.publicKeyCallback(fakeConn{user: "slug", remote: "203.0.113.7:1"}, userKeyWire(t)); u != nil || err == nil {
+		t.Errorf("publickey: expected fail-closed, got u=%+v err=%v", u, err)
+	}
+	if u, err := p.passwordCallback(fakeConn{user: "slug", remote: "203.0.113.7:1"}, []byte("pw")); u != nil || err == nil {
+		t.Errorf("password: expected fail-closed, got u=%+v err=%v", u, err)
+	}
+}
+
 func TestPasswordCallback_TransportErrorFailsClosed(t *testing.T) {
 	fr := &fakeResolver{err: errors.New("connection refused")}
 	u, err := newPlugin(t, fr).passwordCallback(fakeConn{user: "slug", remote: "203.0.113.7:1"}, []byte("pw"))

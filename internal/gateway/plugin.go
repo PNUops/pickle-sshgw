@@ -93,6 +93,11 @@ func (p *Plugin) publicKeyCallback(conn libplugin.ConnMetadata, keyBlob []byte) 
 		logResolveErr(base, err)
 		return nil, err
 	}
+	if r == nil {
+		// A well-behaved resolver never returns (nil, nil); guard anyway so a
+		// future resolver contract slip refuses the session rather than panics.
+		return nil, fmt.Errorf("gateway: resolver returned no route and no error (fail-closed)")
+	}
 
 	p.store.putHostKeys(connID, r.HostKeys)
 	logRouteAllowed(base, r)
@@ -123,6 +128,9 @@ func (p *Plugin) passwordCallback(conn libplugin.ConnMetadata, password []byte) 
 	if err != nil {
 		logResolveErr(base, err)
 		return nil, err
+	}
+	if r == nil {
+		return nil, fmt.Errorf("gateway: resolver returned no route and no error (fail-closed)")
 	}
 
 	p.store.putHostKeys(connID, r.HostKeys)
