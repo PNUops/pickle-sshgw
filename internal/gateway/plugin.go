@@ -207,15 +207,28 @@ func (p *Plugin) verifyHostKeyCallback(conn libplugin.ConnMetadata, hostname, ne
 }
 
 // resolveMemoized returns the memoized outcome for (connID, fingerprint) when
-// present, otherwise calls the resolver once and memoizes the result (success
-// or denial).
+// present, otherwise calls the resolver once. Only a **structural** outcome is
+// memoized — an allow (success) or a *route.Denial, both stable for the auth
+// window. A transport/decode error is deliberately NOT memoized: caching a
+// transient blip would pin the key to that failure for the whole ~2-min window
+// and block the client's signed-stage retry (fail-closed either way, but
+// needlessly). Leaving it unmemoized lets the natural retry re-attempt.
 func (p *Plugin) resolveMemoized(connID string, req route.Request) (*route.Route, error) {
 	if e, ok := p.store.memoGet(connID, req.PublicKeyFingerprint); ok {
 		return e.route, e.err
 	}
 	r, err := p.resolver.Resolve(context.Background(), req)
-	p.store.memoPut(connID, req.PublicKeyFingerprint, memoEntry{route: r, err: err})
+	if err == nil || isDenial(err) {
+		p.store.memoPut(connID, req.PublicKeyFingerprint, memoEntry{route: r, err: err})
+	}
 	return r, err
+}
+
+// isDenial reports whether err is a structural route decision (*route.Denial)
+// rather than a transport/decode failure.
+func isDenial(err error) bool {
+	var d *route.Denial
+	return errors.As(err, &d)
 }
 
 // pipeStartCallback fires once per established session, after downstream

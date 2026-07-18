@@ -235,6 +235,38 @@ func TestPublicKeyCallback_MemoizesProbeAndSign(t *testing.T) {
 	}
 }
 
+// A structural denial is stable for the auth window and IS memoized: re-offering
+// the same key costs one API call.
+func TestPublicKeyCallback_DenialMemoized(t *testing.T) {
+	fr := &fakeResolver{err: &route.Denial{HTTPStatus: 403, Reason: "SSHGW_KEY_NOT_MEMBER"}}
+	p := newPlugin(t, fr)
+	conn := fakeConn{user: "slug", remote: "203.0.113.7:1", uid: "conn-deny-memo"}
+	key := userKeyWire(t)
+	_, _ = p.publicKeyCallback(conn, key)
+	_, _ = p.publicKeyCallback(conn, key)
+	if fr.calls != 1 {
+		t.Errorf("a denial should be memoized: expected 1 resolver call, got %d", fr.calls)
+	}
+}
+
+// A transport/decode blip is NOT memoized: the client's signed-stage retry must
+// re-hit the API rather than be pinned to the cached failure for the auth window.
+func TestPublicKeyCallback_TransportErrorNotMemoized(t *testing.T) {
+	fr := &fakeResolver{err: errors.New("connection refused")}
+	p := newPlugin(t, fr)
+	conn := fakeConn{user: "slug", remote: "203.0.113.7:1", uid: "conn-blip"}
+	key := userKeyWire(t)
+	if _, err := p.publicKeyCallback(conn, key); err == nil {
+		t.Fatal("expected error")
+	}
+	if _, err := p.publicKeyCallback(conn, key); err == nil {
+		t.Fatal("expected error")
+	}
+	if fr.calls != 2 {
+		t.Errorf("a transport error must not be memoized: expected 2 resolver calls, got %d", fr.calls)
+	}
+}
+
 func TestPasswordCallback_DisabledDenied(t *testing.T) {
 	fr := &fakeResolver{err: &route.Denial{HTTPStatus: 403, Reason: "SSHGW_PASSWORD_DISABLED"}}
 	u, err := newPlugin(t, fr).passwordCallback(fakeConn{user: "slug", remote: "203.0.113.7:1"}, []byte("pw"))
