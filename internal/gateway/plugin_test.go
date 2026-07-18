@@ -3,7 +3,10 @@ package gateway
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/elliptic"
+	"crypto/rand"
 	"encoding/pem"
 	"errors"
 	"sync"
@@ -342,6 +345,43 @@ func TestVerifyHostKey_MissingEntry(t *testing.T) {
 	// No preceding route on this connection: fail-closed.
 	if err := p.verifyHostKeyCallback(fakeConn{uid: "never-routed"}, "vm", "1.2.3.4:22", hostWire); err == nil {
 		t.Fatal("expected fail-closed error when no host key was pinned")
+	}
+}
+
+// Regression guard for deploy blocker A / Option B: sshpiper v1.5.4 gives the
+// plugin no way to force the upstream host-key algorithm (the libplugin Upstream
+// has no HostKeyAlgorithms field, and createUpstream never sets one), and Go's
+// default preference ranks ecdsa-nistp256 above ed25519 — so a VM holding both
+// keys presents ecdsa on the upstream hop. The API therefore pins ALL of the
+// VM's host key types, and verifyHostKey must match the presented key against
+// any pinned entry regardless of algorithm.
+func TestVerifyHostKey_MixedTypeArray(t *testing.T) {
+	edLine, _ := hostKeyMaterial(t, 0x31) // ed25519 pinned entry
+	ecKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("ecdsa keygen: %v", err)
+	}
+	ecPub, err := ssh.NewPublicKey(ecKey.Public())
+	if err != nil {
+		t.Fatalf("NewPublicKey: %v", err)
+	}
+	ecLine := string(bytes.TrimSpace(ssh.MarshalAuthorizedKey(ecPub))) // ecdsa pinned entry
+
+	fr := &fakeResolver{route: &route.Route{IP: "172.29.4.11", Port: 22, User: "student",
+		HostKeys: []string{edLine, ecLine}}}
+	p := newPlugin(t, fr)
+	conn := fakeConn{user: "slug", remote: "203.0.113.7:1", uid: "conn-mixed"}
+	if _, err := p.publicKeyCallback(conn, userKeyWire(t)); err != nil {
+		t.Fatalf("route: %v", err)
+	}
+	// The upstream negotiates ecdsa (Go default) → the ecdsa entry must verify.
+	if err := p.verifyHostKeyCallback(conn, "vm", "172.29.4.11:22", ecPub.Marshal()); err != nil {
+		t.Fatalf("ecdsa host key should match the ecdsa array entry: %v", err)
+	}
+	// A key of a type/value absent from the pinned set is still refused.
+	_, strangerWire := hostKeyMaterial(t, 0x99)
+	if err := p.verifyHostKeyCallback(conn, "vm", "172.29.4.11:22", strangerWire); err == nil {
+		t.Fatal("a key absent from the pinned array must be refused")
 	}
 }
 
