@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"sort"
 	"sync"
 	"time"
 
@@ -34,14 +35,17 @@ type hostRecord struct {
 	expires time.Time
 }
 
-// sessionRecord remembers, per connection, the credential that last succeeded in
-// an auth callback — the one that authenticates the session. PipeStart reads it
-// to attribute the sshgw.session audit to the fingerprint that actually
-// authenticated (fingerprint empty on the password path).
+// sessionRecord remembers, per connection, every fingerprint that got an allowed
+// route decision (the candidate set — publickey path) plus the auth method. It
+// is a *set*, not a single "winner": sshpiper caches per-(user,key) callbacks and
+// PipeStart does not reveal which key signed, so the plugin cannot single out the
+// authenticator and must forward all candidates for the API's distinct-owner
+// rule. authMethod is last-write-wins so a password fallback after a publickey
+// probe is reported as password (candidates then suppressed).
 type sessionRecord struct {
-	fingerprint string
-	authMethod  string
-	expires     time.Time
+	fingerprints map[string]struct{}
+	authMethod   string
+	expires      time.Time
 }
 
 // connStore memoizes per-(connection,fingerprint) route lookups and holds the
@@ -114,26 +118,51 @@ func (s *connStore) getHostKeys(connID string) ([]string, bool) {
 	return rec.keys, true
 }
 
-// putSessionAttr records the credential that just authenticated on a connection
-// (overwriting: the last successful callback before PipeStart is the one that
-// authenticates). fingerprint is empty on the password path.
-func (s *connStore) putSessionAttr(connID, fingerprint, authMethod string) {
+// addSessionCandidate adds a route-allowed fingerprint to the connection's
+// publickey candidate set (accumulate, never overwrite — every allowed key is a
+// candidate the API must weigh) and marks the method publickey.
+func (s *connStore) addSessionCandidate(connID, fingerprint string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.sweepLocked()
-	s.sess[connID] = sessionRecord{fingerprint: fingerprint, authMethod: authMethod, expires: s.now().Add(s.ttl)}
+	rec := s.sess[connID]
+	if rec.fingerprints == nil {
+		rec.fingerprints = make(map[string]struct{})
+	}
+	rec.fingerprints[fingerprint] = struct{}{}
+	rec.authMethod = route.AuthPublicKey
+	rec.expires = s.now().Add(s.ttl)
+	s.sess[connID] = rec
 }
 
-// getSessionAttr returns the authenticating credential for a connection if
-// present and unexpired.
-func (s *connStore) getSessionAttr(connID string) (fingerprint, authMethod string, ok bool) {
+// setSessionPassword marks the connection's authenticated method as password
+// (no per-user identity). Last-write-wins over any earlier publickey mark, so a
+// publickey probe followed by a password fallback is audited as password.
+func (s *connStore) setSessionPassword(connID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sweepLocked()
+	rec := s.sess[connID]
+	rec.authMethod = route.AuthPassword
+	rec.expires = s.now().Add(s.ttl)
+	s.sess[connID] = rec
+}
+
+// getSessionAttr returns the connection's candidate fingerprints (sorted, for a
+// deterministic request) and auth method if present and unexpired.
+func (s *connStore) getSessionAttr(connID string) (fingerprints []string, authMethod string, ok bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	rec, present := s.sess[connID]
 	if !present || !s.now().Before(rec.expires) {
-		return "", "", false
+		return nil, "", false
 	}
-	return rec.fingerprint, rec.authMethod, true
+	fps := make([]string, 0, len(rec.fingerprints))
+	for fp := range rec.fingerprints {
+		fps = append(fps, fp)
+	}
+	sort.Strings(fps)
+	return fps, rec.authMethod, true
 }
 
 // sweepLocked drops expired entries from every map. Called under s.mu on writes;

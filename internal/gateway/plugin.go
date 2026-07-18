@@ -29,7 +29,7 @@ import (
 // fake.
 type Resolver interface {
 	Resolve(ctx context.Context, req route.Request) (*route.Route, error)
-	SessionStart(ctx context.Context, req route.Request) error
+	SessionStart(ctx context.Context, req route.SessionRequest) error
 }
 
 // sessionAuditTimeout bounds the fire-and-forget PipeStart session-audit call so
@@ -111,9 +111,10 @@ func (p *Plugin) publicKeyCallback(conn libplugin.ConnMetadata, keyBlob []byte) 
 	}
 
 	p.store.putHostKeys(connID, r.HostKeys)
-	// Remember which key authorized this connection so PipeStart can attribute
-	// the session audit; the last success before PipeStart is the authenticator.
-	p.store.putSessionAttr(connID, fingerprint, route.AuthPublicKey)
+	// Add this allowed key to the connection's candidate set for the session
+	// audit. It accumulates (never overwrites): the plugin can't tell which key
+	// ultimately signs, so PipeStart forwards every allowed candidate.
+	p.store.addSessionCandidate(connID, fingerprint)
 	logRouteAllowed(base, r)
 	return &libplugin.Upstream{
 		Host:          r.IP,
@@ -148,9 +149,10 @@ func (p *Plugin) passwordCallback(conn libplugin.ConnMetadata, password []byte) 
 	}
 
 	p.store.putHostKeys(connID, r.HostKeys)
-	// Password sessions carry no per-user identity: record the method only, no
-	// fingerprint, so the session audit attributes actor=null (documented G6 opt-in).
-	p.store.putSessionAttr(connID, "", route.AuthPassword)
+	// Password sessions carry no per-user identity: mark the method (no
+	// fingerprint) so the session audit attributes actor=null (documented G6
+	// opt-in). Last-write-wins over any earlier publickey candidate.
+	p.store.setSessionPassword(connID)
 	logRouteAllowed(base, r)
 	return &libplugin.Upstream{
 		Host:          r.IP,
@@ -252,21 +254,23 @@ func (p *Plugin) pipeStartCallback(conn libplugin.ConnMetadata) {
 }
 
 // buildSessionRequest assembles the session-audit request from the connection
-// and the stored attribution. ok is false when no attribution was recorded.
-func (p *Plugin) buildSessionRequest(conn libplugin.ConnMetadata) (route.Request, bool) {
+// and the stored attribution. ok is false when no attribution was recorded. On
+// the publickey path it forwards the full candidate-fingerprint set (the API
+// applies the distinct-owner rule); the password path carries no fingerprints.
+func (p *Plugin) buildSessionRequest(conn libplugin.ConnMetadata) (route.SessionRequest, bool) {
 	connID := conn.UniqueID()
-	fingerprint, authMethod, ok := p.store.getSessionAttr(connID)
+	fingerprints, authMethod, ok := p.store.getSessionAttr(connID)
 	if !ok {
-		return route.Request{}, false
+		return route.SessionRequest{}, false
 	}
-	req := route.Request{
+	req := route.SessionRequest{
 		Slug:         conn.User(),
 		SourceIP:     hostFromAddr(conn.RemoteAddr()),
 		AuthMethod:   authMethod,
 		ConnectionID: connID,
 	}
 	if authMethod == route.AuthPublicKey {
-		req.PublicKeyFingerprint = fingerprint
+		req.CandidateFingerprints = fingerprints
 	}
 	return req, true
 }
@@ -274,7 +278,7 @@ func (p *Plugin) buildSessionRequest(conn libplugin.ConnMetadata) (route.Request
 // sendSessionAudit performs the fire-and-forget session-audit POST under a short
 // timeout. A failure is logged and dropped — the session is already live and is
 // never gated on this call.
-func (p *Plugin) sendSessionAudit(req route.Request) {
+func (p *Plugin) sendSessionAudit(req route.SessionRequest) {
 	ctx, cancel := context.WithTimeout(context.Background(), sessionAuditTimeout)
 	defer cancel()
 	if err := p.resolver.SessionStart(ctx, req); err != nil {

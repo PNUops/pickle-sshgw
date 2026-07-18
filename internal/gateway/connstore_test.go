@@ -36,21 +36,34 @@ func TestConnStore_HostKeysRoundTrip(t *testing.T) {
 	}
 }
 
-func TestConnStore_SessionAttrRoundTrip(t *testing.T) {
+func TestConnStore_SessionCandidatesAccumulate(t *testing.T) {
 	s := newConnStore(time.Minute)
 	if _, _, ok := s.getSessionAttr("c1"); ok {
 		t.Fatal("empty store must miss")
 	}
-	s.putSessionAttr("c1", "SHA256:abc", "publickey")
-	fp, am, ok := s.getSessionAttr("c1")
-	if !ok || fp != "SHA256:abc" || am != "publickey" {
-		t.Fatalf("attr round trip: fp=%q am=%q ok=%v", fp, am, ok)
+	// Candidates accumulate (set semantics); a duplicate add is idempotent.
+	s.addSessionCandidate("c1", "SHA256:aaa")
+	s.addSessionCandidate("c1", "SHA256:bbb")
+	s.addSessionCandidate("c1", "SHA256:aaa")
+	fps, am, ok := s.getSessionAttr("c1")
+	if !ok || am != "publickey" {
+		t.Fatalf("attr: am=%q ok=%v", am, ok)
 	}
-	// Overwrite: the last successful auth wins (probe→sign, or a later key).
-	s.putSessionAttr("c1", "", "password")
-	fp, am, _ = s.getSessionAttr("c1")
-	if fp != "" || am != "password" {
-		t.Fatalf("overwrite failed: fp=%q am=%q", fp, am)
+	// Returned sorted and de-duplicated.
+	if len(fps) != 2 || fps[0] != "SHA256:aaa" || fps[1] != "SHA256:bbb" {
+		t.Fatalf("candidate set: %+v", fps)
+	}
+}
+
+func TestConnStore_SessionPasswordLastWriteWins(t *testing.T) {
+	s := newConnStore(time.Minute)
+	// A publickey candidate followed by a password fallback: method flips to
+	// password (the audit reports password; candidates are suppressed upstream).
+	s.addSessionCandidate("c1", "SHA256:aaa")
+	s.setSessionPassword("c1")
+	_, am, ok := s.getSessionAttr("c1")
+	if !ok || am != "password" {
+		t.Fatalf("expected password method last-write-wins, got am=%q ok=%v", am, ok)
 	}
 }
 
@@ -61,7 +74,7 @@ func TestConnStoreExpiry(t *testing.T) {
 
 	s.memoPut("c1", "fp1", memoEntry{route: &route.Route{IP: "1.2.3.4", Port: 22, User: "student"}})
 	s.putHostKeys("c1", []string{"ssh-ed25519 AAAA"})
-	s.putSessionAttr("c1", "SHA256:abc", "publickey")
+	s.addSessionCandidate("c1", "SHA256:abc")
 
 	// Still inside the TTL window.
 	now = now.Add(time.Minute)

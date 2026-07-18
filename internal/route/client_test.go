@@ -227,9 +227,9 @@ func TestSessionStart_PostsAuditRequest(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := mustClient(t, srv.URL).SessionStart(context.Background(), Request{
-		Slug: "team-alpha-a1b2", SourceIP: "203.0.113.7",
-		AuthMethod: AuthPublicKey, PublicKeyFingerprint: "SHA256:abc", ConnectionID: "conn-1",
+	err := mustClient(t, srv.URL).SessionStart(context.Background(), SessionRequest{
+		Slug: "team-alpha-a1b2", SourceIP: "203.0.113.7", AuthMethod: AuthPublicKey,
+		CandidateFingerprints: []string{"SHA256:abc", "SHA256:def"}, ConnectionID: "conn-1",
 	})
 	if err != nil {
 		t.Fatalf("SessionStart: %v", err)
@@ -237,12 +237,31 @@ func TestSessionStart_PostsAuditRequest(t *testing.T) {
 	if auth != "Bearer test-token" {
 		t.Errorf("bad auth header: %q", auth)
 	}
-	var got Request
+	var got SessionRequest
 	if err := json.Unmarshal(raw, &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if got.ConnectionID != "conn-1" || got.PublicKeyFingerprint != "SHA256:abc" {
+	if got.ConnectionID != "conn-1" || len(got.CandidateFingerprints) != 2 ||
+		got.CandidateFingerprints[0] != "SHA256:abc" || got.CandidateFingerprints[1] != "SHA256:def" {
 		t.Errorf("bad session body: %+v", got)
+	}
+}
+
+// The password path sends no candidateFingerprints (omitempty drops the field).
+func TestSessionStart_PasswordOmitsCandidates(t *testing.T) {
+	var raw []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	if err := mustClient(t, srv.URL).SessionStart(context.Background(), SessionRequest{
+		Slug: "slug", SourceIP: "203.0.113.7", AuthMethod: AuthPassword, ConnectionID: "conn-1",
+	}); err != nil {
+		t.Fatalf("SessionStart: %v", err)
+	}
+	if strings.Contains(string(raw), "candidateFingerprints") {
+		t.Errorf("password session must omit candidateFingerprints: %s", raw)
 	}
 }
 
@@ -251,13 +270,13 @@ func TestSessionStart_Non2xxIsError(t *testing.T) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
-	if err := mustClient(t, srv.URL).SessionStart(context.Background(), Request{AuthMethod: AuthPassword}); err == nil {
+	if err := mustClient(t, srv.URL).SessionStart(context.Background(), SessionRequest{AuthMethod: AuthPassword}); err == nil {
 		t.Fatal("expected error on 500")
 	}
 }
 
 func TestSessionStart_TransportError(t *testing.T) {
-	if err := mustClient(t, "http://127.0.0.1:1").SessionStart(context.Background(), Request{AuthMethod: AuthPassword}); err == nil {
+	if err := mustClient(t, "http://127.0.0.1:1").SessionStart(context.Background(), SessionRequest{AuthMethod: AuthPassword}); err == nil {
 		t.Fatal("expected transport error")
 	}
 }

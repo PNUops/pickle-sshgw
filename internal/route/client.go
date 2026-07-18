@@ -129,6 +129,21 @@ const (
 	AuthPassword  = "password"
 )
 
+// SessionRequest is the authenticated-session audit body
+// (POST /internal/sshgw/session). Unlike the route request it carries the full
+// set of route-allowed fingerprints for the connection, not a single key:
+// PipeStart does not tell the plugin which key actually authenticated, so the
+// gateway forwards every allowed candidate and the API applies the
+// distinct-owner rule (single owner → attributed, multiple owners → ambiguous).
+// CandidateFingerprints travels only on the publickey path.
+type SessionRequest struct {
+	Slug                  string   `json:"slug"`
+	SourceIP              string   `json:"sourceIp"`
+	AuthMethod            string   `json:"authMethod"`
+	CandidateFingerprints []string `json:"candidateFingerprints,omitempty"`
+	ConnectionID          string   `json:"connectionId,omitempty"`
+}
+
 // denialBody carries both possible discriminators; whichever the server sends
 // is populated.
 type denialBody struct {
@@ -202,9 +217,10 @@ func (c *Client) Resolve(ctx context.Context, req Request) (*Route, error) {
 // from PipeStart, after downstream signature verification), so this call is
 // audit-only. The caller invokes it fire-and-forget with a short-timeout context
 // and never gates the session on the outcome; a non-2xx or transport failure is
-// returned only so the caller can log it. The request is the same shape as the
-// route request, carrying the fingerprint that actually authenticated.
-func (c *Client) SessionStart(ctx context.Context, req Request) error {
+// returned only so the caller can log it. The request carries every route-allowed
+// candidate fingerprint for the connection (publickey path); the API resolves
+// identity by the distinct-owner rule.
+func (c *Client) SessionStart(ctx context.Context, req SessionRequest) error {
 	body, err := json.Marshal(req)
 	if err != nil {
 		return fmt.Errorf("route: marshal session request: %w", err)

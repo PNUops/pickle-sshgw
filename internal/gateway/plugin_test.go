@@ -42,7 +42,7 @@ type fakeResolver struct {
 	calls  int
 
 	sessMu   sync.Mutex
-	sessReqs []route.Request
+	sessReqs []route.SessionRequest
 	sessErr  error
 	sessCh   chan struct{} // if set, receives one signal per SessionStart call
 }
@@ -53,7 +53,7 @@ func (r *fakeResolver) Resolve(_ context.Context, req route.Request) (*route.Rou
 	return r.route, r.err
 }
 
-func (r *fakeResolver) SessionStart(_ context.Context, req route.Request) error {
+func (r *fakeResolver) SessionStart(_ context.Context, req route.SessionRequest) error {
 	r.sessMu.Lock()
 	r.sessReqs = append(r.sessReqs, req)
 	ch, err := r.sessCh, r.sessErr
@@ -64,10 +64,10 @@ func (r *fakeResolver) SessionStart(_ context.Context, req route.Request) error 
 	return err
 }
 
-func (r *fakeResolver) sessionCalls() []route.Request {
+func (r *fakeResolver) sessionCalls() []route.SessionRequest {
 	r.sessMu.Lock()
 	defer r.sessMu.Unlock()
-	return append([]route.Request(nil), r.sessReqs...)
+	return append([]route.SessionRequest(nil), r.sessReqs...)
 }
 
 // goldenSeed is the fixed 32-byte ed25519 seed (bytes 1..32) whose public key's
@@ -382,8 +382,23 @@ func TestConfigWiresCallbacks(t *testing.T) {
 	}
 }
 
-// After a successful publickey auth, the session-audit request carries the
-// authenticating fingerprint and full connection context.
+// userKeyForSeed builds an arbitrary distinct ed25519 user key: its wire blob
+// (as PublicKeyCallback receives it) and its OpenSSH SHA-256 fingerprint.
+func userKeyForSeed(t *testing.T, seedByte byte) (wire []byte, fingerprint string) {
+	t.Helper()
+	seed := make([]byte, ed25519.SeedSize)
+	for i := range seed {
+		seed[i] = seedByte
+	}
+	pub, err := ssh.NewPublicKey(ed25519.NewKeyFromSeed(seed).Public())
+	if err != nil {
+		t.Fatalf("NewPublicKey: %v", err)
+	}
+	return pub.Marshal(), ssh.FingerprintSHA256(pub)
+}
+
+// After a single successful publickey auth, the session-audit request carries
+// exactly that one fingerprint as the sole candidate, plus connection context.
 func TestBuildSessionRequest_PublicKey(t *testing.T) {
 	authLine, _ := hostKeyMaterial(t, 0x40)
 	fr := &fakeResolver{route: &route.Route{IP: "172.29.4.11", Port: 22, User: "student", HostKeys: []string{authLine}}}
@@ -396,29 +411,69 @@ func TestBuildSessionRequest_PublicKey(t *testing.T) {
 	if !ok {
 		t.Fatal("expected attribution after successful publickey auth")
 	}
-	if req.AuthMethod != route.AuthPublicKey || req.PublicKeyFingerprint != goldenFingerprint {
-		t.Errorf("bad session req: %+v", req)
+	if req.AuthMethod != route.AuthPublicKey {
+		t.Errorf("authMethod: got %q", req.AuthMethod)
+	}
+	if len(req.CandidateFingerprints) != 1 || req.CandidateFingerprints[0] != goldenFingerprint {
+		t.Errorf("expected single candidate [%s], got %+v", goldenFingerprint, req.CandidateFingerprints)
 	}
 	if req.Slug != "team-alpha-a1b2" || req.SourceIP != "203.0.113.7" || req.ConnectionID != "conn-pk" {
 		t.Errorf("bad session context: %+v", req)
 	}
 }
 
-// A password session records the method with no fingerprint (actor=null audit).
+// Every route-allowed key on a connection accumulates into the candidate set —
+// this is what lets the API apply the distinct-owner rule (a framing offer of a
+// fellow member's key shows up as a second candidate, never silently overwriting
+// the real key).
+func TestBuildSessionRequest_MultipleCandidatesAccumulate(t *testing.T) {
+	authLine, _ := hostKeyMaterial(t, 0x40)
+	fr := &fakeResolver{route: &route.Route{IP: "172.29.4.11", Port: 22, User: "student", HostKeys: []string{authLine}}}
+	p := newPlugin(t, fr)
+	conn := fakeConn{user: "slug", remote: "203.0.113.7:1", uid: "conn-multi"}
+
+	keyA := userKeyWire(t) // golden
+	keyB, fpB := userKeyForSeed(t, 0x77)
+	if _, err := p.publicKeyCallback(conn, keyA); err != nil {
+		t.Fatalf("keyA: %v", err)
+	}
+	if _, err := p.publicKeyCallback(conn, keyB); err != nil {
+		t.Fatalf("keyB: %v", err)
+	}
+
+	req, ok := p.buildSessionRequest(conn)
+	if !ok {
+		t.Fatal("expected attribution")
+	}
+	got := map[string]bool{}
+	for _, fp := range req.CandidateFingerprints {
+		got[fp] = true
+	}
+	if len(req.CandidateFingerprints) != 2 || !got[goldenFingerprint] || !got[fpB] {
+		t.Fatalf("expected both candidates {%s, %s}, got %+v", goldenFingerprint, fpB, req.CandidateFingerprints)
+	}
+}
+
+// A password session records the method with no candidates (actor=null audit),
+// even if an earlier publickey candidate was offered (last-write-wins).
 func TestBuildSessionRequest_Password(t *testing.T) {
 	authLine, _ := hostKeyMaterial(t, 0x55)
 	fr := &fakeResolver{route: &route.Route{IP: "172.29.4.11", Port: 22, User: "student", HostKeys: []string{authLine}}}
 	p := newPlugin(t, fr)
 	conn := fakeConn{user: "slug", remote: "203.0.113.7:1", uid: "conn-pw"}
+	// A publickey candidate offered first must not leak into a password session.
+	if _, err := p.publicKeyCallback(conn, userKeyWire(t)); err != nil {
+		t.Fatalf("publickey: %v", err)
+	}
 	if _, err := p.passwordCallback(conn, []byte("pw")); err != nil {
-		t.Fatalf("route: %v", err)
+		t.Fatalf("password: %v", err)
 	}
 	req, ok := p.buildSessionRequest(conn)
 	if !ok {
 		t.Fatal("expected attribution after successful password auth")
 	}
-	if req.AuthMethod != route.AuthPassword || req.PublicKeyFingerprint != "" {
-		t.Errorf("password session must carry no fingerprint: %+v", req)
+	if req.AuthMethod != route.AuthPassword || len(req.CandidateFingerprints) != 0 {
+		t.Errorf("password session must carry no candidates: %+v", req)
 	}
 }
 
@@ -452,7 +507,8 @@ func TestPipeStart_EmitsSessionAudit(t *testing.T) {
 	if len(calls) != 1 {
 		t.Fatalf("expected 1 session call, got %d", len(calls))
 	}
-	if calls[0].PublicKeyFingerprint != goldenFingerprint || calls[0].ConnectionID != "conn-e2e" {
+	if len(calls[0].CandidateFingerprints) != 1 || calls[0].CandidateFingerprints[0] != goldenFingerprint ||
+		calls[0].ConnectionID != "conn-e2e" {
 		t.Errorf("bad session audit request: %+v", calls[0])
 	}
 }
