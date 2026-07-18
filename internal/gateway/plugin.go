@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/pickle/sshgw/internal/route"
 	log "github.com/sirupsen/logrus"
@@ -23,11 +24,18 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// Resolver resolves a route request to an upstream route. *route.Client
-// implements it; tests substitute a fake.
+// Resolver resolves a route request to an upstream route and emits the
+// authenticated-session audit. *route.Client implements it; tests substitute a
+// fake.
 type Resolver interface {
 	Resolve(ctx context.Context, req route.Request) (*route.Route, error)
+	SessionStart(ctx context.Context, req route.Request) error
 }
+
+// sessionAuditTimeout bounds the fire-and-forget PipeStart session-audit call so
+// a slow/hung pickle-api can never accumulate goroutines. The session is already
+// live and is never gated on this call.
+const sessionAuditTimeout = 3 * time.Second
 
 // Plugin holds the callback dependencies.
 type Plugin struct {
@@ -46,14 +54,17 @@ func New(resolver Resolver, platformKey []byte) *Plugin {
 	}
 }
 
-// Config returns the sshpiperd plugin config wiring all three callbacks: public
-// key (the default identity path), password (per-VM opt-in passthrough), and
-// upstream host-key verification (pins the VM's collected host key).
+// Config returns the sshpiperd plugin config. It wires the three auth-time
+// callbacks — public key (the default identity path), password (per-VM opt-in
+// passthrough), and upstream host-key verification (pins the VM's collected host
+// key) — plus PipeStart, which fires once per established session and emits the
+// authenticated per-user audit (G6).
 func (p *Plugin) Config() *libplugin.SshPiperPluginConfig {
 	return &libplugin.SshPiperPluginConfig{
 		PublicKeyCallback:     p.publicKeyCallback,
 		PasswordCallback:      p.passwordCallback,
 		VerifyHostKeyCallback: p.verifyHostKeyCallback,
+		PipeStartCallback:     p.pipeStartCallback,
 	}
 }
 
@@ -100,6 +111,9 @@ func (p *Plugin) publicKeyCallback(conn libplugin.ConnMetadata, keyBlob []byte) 
 	}
 
 	p.store.putHostKeys(connID, r.HostKeys)
+	// Remember which key authorized this connection so PipeStart can attribute
+	// the session audit; the last success before PipeStart is the authenticator.
+	p.store.putSessionAttr(connID, fingerprint, route.AuthPublicKey)
 	logRouteAllowed(base, r)
 	return &libplugin.Upstream{
 		Host:          r.IP,
@@ -134,6 +148,9 @@ func (p *Plugin) passwordCallback(conn libplugin.ConnMetadata, password []byte) 
 	}
 
 	p.store.putHostKeys(connID, r.HostKeys)
+	// Password sessions carry no per-user identity: record the method only, no
+	// fingerprint, so the session audit attributes actor=null (documented G6 opt-in).
+	p.store.putSessionAttr(connID, "", route.AuthPassword)
 	logRouteAllowed(base, r)
 	return &libplugin.Upstream{
 		Host:          r.IP,
@@ -199,6 +216,66 @@ func (p *Plugin) resolveMemoized(connID string, req route.Request) (*route.Route
 	r, err := p.resolver.Resolve(context.Background(), req)
 	p.store.memoPut(connID, req.PublicKeyFingerprint, memoEntry{route: r, err: err})
 	return r, err
+}
+
+// pipeStartCallback fires once per established session, after downstream
+// signature verification (publickey) or password acceptance. It emits the
+// authenticated per-user session audit (sshgw.session, G6) for the credential
+// that actually authenticated — recovered from the connStore attribution keyed
+// by connection id. The audit runs in a goroutine: sshpiperd invokes this
+// synchronously right before it starts piping bytes, so it must return
+// immediately and never let the audit hop delay or affect the live session.
+func (p *Plugin) pipeStartCallback(conn libplugin.ConnMetadata) {
+	req, ok := p.buildSessionRequest(conn)
+	if !ok {
+		// No recorded attribution for this connection (e.g. an auth path we did
+		// not record, or an expired entry). Nothing to audit; skip harmlessly.
+		log.WithFields(log.Fields{
+			"connId": conn.UniqueID(),
+		}).Debug("sshgw pipe start with no session attribution, skipping audit")
+		return
+	}
+	go p.sendSessionAudit(req)
+}
+
+// buildSessionRequest assembles the session-audit request from the connection
+// and the stored attribution. ok is false when no attribution was recorded.
+func (p *Plugin) buildSessionRequest(conn libplugin.ConnMetadata) (route.Request, bool) {
+	connID := conn.UniqueID()
+	fingerprint, authMethod, ok := p.store.getSessionAttr(connID)
+	if !ok {
+		return route.Request{}, false
+	}
+	req := route.Request{
+		Slug:         conn.User(),
+		SourceIP:     hostFromAddr(conn.RemoteAddr()),
+		AuthMethod:   authMethod,
+		ConnectionID: connID,
+	}
+	if authMethod == route.AuthPublicKey {
+		req.PublicKeyFingerprint = fingerprint
+	}
+	return req, true
+}
+
+// sendSessionAudit performs the fire-and-forget session-audit POST under a short
+// timeout. A failure is logged and dropped — the session is already live and is
+// never gated on this call.
+func (p *Plugin) sendSessionAudit(req route.Request) {
+	ctx, cancel := context.WithTimeout(context.Background(), sessionAuditTimeout)
+	defer cancel()
+	if err := p.resolver.SessionStart(ctx, req); err != nil {
+		log.WithFields(log.Fields{
+			"slug": req.Slug, "sourceIp": req.SourceIP,
+			"authMethod": req.AuthMethod, "connId": req.ConnectionID,
+			"err": err.Error(),
+		}).Warn("sshgw session audit failed (best-effort, session unaffected)")
+		return
+	}
+	log.WithFields(log.Fields{
+		"slug": req.Slug, "sourceIp": req.SourceIP,
+		"authMethod": req.AuthMethod, "connId": req.ConnectionID,
+	}).Info("sshgw session audited")
 }
 
 // logResolveErr logs a route failure, distinguishing a structured denial (an

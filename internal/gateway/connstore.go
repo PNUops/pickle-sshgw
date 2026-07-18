@@ -34,6 +34,16 @@ type hostRecord struct {
 	expires time.Time
 }
 
+// sessionRecord remembers, per connection, the credential that last succeeded in
+// an auth callback — the one that authenticates the session. PipeStart reads it
+// to attribute the sshgw.session audit to the fingerprint that actually
+// authenticated (fingerprint empty on the password path).
+type sessionRecord struct {
+	fingerprint string
+	authMethod  string
+	expires     time.Time
+}
+
 // connStore memoizes per-(connection,fingerprint) route lookups and holds the
 // per-connection pinned host keys the verify callback checks against. It is
 // safe for concurrent use; entries expire after ttl and are swept lazily on
@@ -44,6 +54,7 @@ type connStore struct {
 	mu   sync.Mutex
 	memo map[string]memoRecord
 	host map[string]hostRecord
+	sess map[string]sessionRecord
 }
 
 func newConnStore(ttl time.Duration) *connStore {
@@ -52,6 +63,7 @@ func newConnStore(ttl time.Duration) *connStore {
 		now:  time.Now,
 		memo: make(map[string]memoRecord),
 		host: make(map[string]hostRecord),
+		sess: make(map[string]sessionRecord),
 	}
 }
 
@@ -102,7 +114,29 @@ func (s *connStore) getHostKeys(connID string) ([]string, bool) {
 	return rec.keys, true
 }
 
-// sweepLocked drops expired entries from both maps. Called under s.mu on writes;
+// putSessionAttr records the credential that just authenticated on a connection
+// (overwriting: the last successful callback before PipeStart is the one that
+// authenticates). fingerprint is empty on the password path.
+func (s *connStore) putSessionAttr(connID, fingerprint, authMethod string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sweepLocked()
+	s.sess[connID] = sessionRecord{fingerprint: fingerprint, authMethod: authMethod, expires: s.now().Add(s.ttl)}
+}
+
+// getSessionAttr returns the authenticating credential for a connection if
+// present and unexpired.
+func (s *connStore) getSessionAttr(connID string) (fingerprint, authMethod string, ok bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rec, present := s.sess[connID]
+	if !present || !s.now().Before(rec.expires) {
+		return "", "", false
+	}
+	return rec.fingerprint, rec.authMethod, true
+}
+
+// sweepLocked drops expired entries from every map. Called under s.mu on writes;
 // the per-connection maps stay tiny (one auth window), so a full scan is cheap.
 func (s *connStore) sweepLocked() {
 	now := s.now()
@@ -114,6 +148,11 @@ func (s *connStore) sweepLocked() {
 	for k, rec := range s.host {
 		if !now.Before(rec.expires) {
 			delete(s.host, k)
+		}
+	}
+	for k, rec := range s.sess {
+		if !now.Before(rec.expires) {
+			delete(s.sess, k)
 		}
 	}
 }

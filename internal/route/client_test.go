@@ -214,6 +214,54 @@ func TestResolve_TransportErrorFailsClosed(t *testing.T) {
 	}
 }
 
+func TestSessionStart_PostsAuditRequest(t *testing.T) {
+	var raw []byte
+	var auth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/internal/sshgw/session" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		auth = r.Header.Get("Authorization")
+		raw, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	err := mustClient(t, srv.URL).SessionStart(context.Background(), Request{
+		Slug: "team-alpha-a1b2", SourceIP: "203.0.113.7",
+		AuthMethod: AuthPublicKey, PublicKeyFingerprint: "SHA256:abc", ConnectionID: "conn-1",
+	})
+	if err != nil {
+		t.Fatalf("SessionStart: %v", err)
+	}
+	if auth != "Bearer test-token" {
+		t.Errorf("bad auth header: %q", auth)
+	}
+	var got Request
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got.ConnectionID != "conn-1" || got.PublicKeyFingerprint != "SHA256:abc" {
+		t.Errorf("bad session body: %+v", got)
+	}
+}
+
+func TestSessionStart_Non2xxIsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	if err := mustClient(t, srv.URL).SessionStart(context.Background(), Request{AuthMethod: AuthPassword}); err == nil {
+		t.Fatal("expected error on 500")
+	}
+}
+
+func TestSessionStart_TransportError(t *testing.T) {
+	if err := mustClient(t, "http://127.0.0.1:1").SessionStart(context.Background(), Request{AuthMethod: AuthPassword}); err == nil {
+		t.Fatal("expected transport error")
+	}
+}
+
 func TestConfigValidate_FailClosed(t *testing.T) {
 	if _, err := New(Config{BaseURL: "", Token: "t"}); err == nil {
 		t.Error("empty BaseURL must fail")

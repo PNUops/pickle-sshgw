@@ -36,6 +36,24 @@ func TestConnStore_HostKeysRoundTrip(t *testing.T) {
 	}
 }
 
+func TestConnStore_SessionAttrRoundTrip(t *testing.T) {
+	s := newConnStore(time.Minute)
+	if _, _, ok := s.getSessionAttr("c1"); ok {
+		t.Fatal("empty store must miss")
+	}
+	s.putSessionAttr("c1", "SHA256:abc", "publickey")
+	fp, am, ok := s.getSessionAttr("c1")
+	if !ok || fp != "SHA256:abc" || am != "publickey" {
+		t.Fatalf("attr round trip: fp=%q am=%q ok=%v", fp, am, ok)
+	}
+	// Overwrite: the last successful auth wins (probe→sign, or a later key).
+	s.putSessionAttr("c1", "", "password")
+	fp, am, _ = s.getSessionAttr("c1")
+	if fp != "" || am != "password" {
+		t.Fatalf("overwrite failed: fp=%q am=%q", fp, am)
+	}
+}
+
 func TestConnStoreExpiry(t *testing.T) {
 	now := time.Unix(1000, 0)
 	s := newConnStore(2 * time.Minute)
@@ -43,6 +61,7 @@ func TestConnStoreExpiry(t *testing.T) {
 
 	s.memoPut("c1", "fp1", memoEntry{route: &route.Route{IP: "1.2.3.4", Port: 22, User: "student"}})
 	s.putHostKeys("c1", []string{"ssh-ed25519 AAAA"})
+	s.putSessionAttr("c1", "SHA256:abc", "publickey")
 
 	// Still inside the TTL window.
 	now = now.Add(time.Minute)
@@ -52,14 +71,20 @@ func TestConnStoreExpiry(t *testing.T) {
 	if _, ok := s.getHostKeys("c1"); !ok {
 		t.Error("host keys should be live within TTL")
 	}
+	if _, _, ok := s.getSessionAttr("c1"); !ok {
+		t.Error("session attr should be live within TTL")
+	}
 
-	// Past the TTL: both expire.
+	// Past the TTL: all expire.
 	now = now.Add(2 * time.Minute)
 	if _, ok := s.memoGet("c1", "fp1"); ok {
 		t.Error("memo should expire after TTL")
 	}
 	if _, ok := s.getHostKeys("c1"); ok {
 		t.Error("host keys should expire after TTL")
+	}
+	if _, _, ok := s.getSessionAttr("c1"); ok {
+		t.Error("session attr should expire after TTL")
 	}
 }
 

@@ -6,7 +6,9 @@ import (
 	"crypto/ed25519"
 	"encoding/pem"
 	"errors"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/pickle/sshgw/internal/route"
 	"golang.org/x/crypto/ssh"
@@ -30,19 +32,42 @@ func (f fakeConn) UniqueID() string {
 }
 func (f fakeConn) GetMeta(string) string { return "" }
 
-// fakeResolver records the last request and counts calls, returning a canned
-// result/error.
+// fakeResolver records the last route request and counts calls, and separately
+// captures session-audit calls (guarded by a mutex — sendSessionAudit runs in a
+// goroutine). Returns canned results/errors.
 type fakeResolver struct {
 	route  *route.Route
 	err    error
 	gotReq route.Request
 	calls  int
+
+	sessMu   sync.Mutex
+	sessReqs []route.Request
+	sessErr  error
+	sessCh   chan struct{} // if set, receives one signal per SessionStart call
 }
 
 func (r *fakeResolver) Resolve(_ context.Context, req route.Request) (*route.Route, error) {
 	r.calls++
 	r.gotReq = req
 	return r.route, r.err
+}
+
+func (r *fakeResolver) SessionStart(_ context.Context, req route.Request) error {
+	r.sessMu.Lock()
+	r.sessReqs = append(r.sessReqs, req)
+	ch, err := r.sessCh, r.sessErr
+	r.sessMu.Unlock()
+	if ch != nil {
+		ch <- struct{}{}
+	}
+	return err
+}
+
+func (r *fakeResolver) sessionCalls() []route.Request {
+	r.sessMu.Lock()
+	defer r.sessMu.Unlock()
+	return append([]route.Request(nil), r.sessReqs...)
 }
 
 // goldenSeed is the fixed 32-byte ed25519 seed (bytes 1..32) whose public key's
@@ -309,7 +334,7 @@ func TestPasswordCallback_TransportErrorFailsClosed(t *testing.T) {
 	}
 }
 
-func TestConfigWiresAllThreeCallbacks(t *testing.T) {
+func TestConfigWiresCallbacks(t *testing.T) {
 	cfg := newPlugin(t, &fakeResolver{}).Config()
 	if cfg.PublicKeyCallback == nil {
 		t.Error("PublicKeyCallback not wired")
@@ -320,6 +345,117 @@ func TestConfigWiresAllThreeCallbacks(t *testing.T) {
 	if cfg.VerifyHostKeyCallback == nil {
 		t.Error("VerifyHostKeyCallback not wired")
 	}
+	if cfg.PipeStartCallback == nil {
+		t.Error("PipeStartCallback not wired")
+	}
+}
+
+// After a successful publickey auth, the session-audit request carries the
+// authenticating fingerprint and full connection context.
+func TestBuildSessionRequest_PublicKey(t *testing.T) {
+	authLine, _ := hostKeyMaterial(t, 0x40)
+	fr := &fakeResolver{route: &route.Route{IP: "172.29.4.11", Port: 22, User: "student", HostKeys: []string{authLine}}}
+	p := newPlugin(t, fr)
+	conn := fakeConn{user: "team-alpha-a1b2", remote: "203.0.113.7:54321", uid: "conn-pk"}
+	if _, err := p.publicKeyCallback(conn, userKeyWire(t)); err != nil {
+		t.Fatalf("route: %v", err)
+	}
+	req, ok := p.buildSessionRequest(conn)
+	if !ok {
+		t.Fatal("expected attribution after successful publickey auth")
+	}
+	if req.AuthMethod != route.AuthPublicKey || req.PublicKeyFingerprint != goldenFingerprint {
+		t.Errorf("bad session req: %+v", req)
+	}
+	if req.Slug != "team-alpha-a1b2" || req.SourceIP != "203.0.113.7" || req.ConnectionID != "conn-pk" {
+		t.Errorf("bad session context: %+v", req)
+	}
+}
+
+// A password session records the method with no fingerprint (actor=null audit).
+func TestBuildSessionRequest_Password(t *testing.T) {
+	authLine, _ := hostKeyMaterial(t, 0x55)
+	fr := &fakeResolver{route: &route.Route{IP: "172.29.4.11", Port: 22, User: "student", HostKeys: []string{authLine}}}
+	p := newPlugin(t, fr)
+	conn := fakeConn{user: "slug", remote: "203.0.113.7:1", uid: "conn-pw"}
+	if _, err := p.passwordCallback(conn, []byte("pw")); err != nil {
+		t.Fatalf("route: %v", err)
+	}
+	req, ok := p.buildSessionRequest(conn)
+	if !ok {
+		t.Fatal("expected attribution after successful password auth")
+	}
+	if req.AuthMethod != route.AuthPassword || req.PublicKeyFingerprint != "" {
+		t.Errorf("password session must carry no fingerprint: %+v", req)
+	}
+}
+
+// A connection that never authenticated has no attribution: PipeStart must skip.
+func TestBuildSessionRequest_NoAttribution(t *testing.T) {
+	if _, ok := newPlugin(t, &fakeResolver{}).buildSessionRequest(fakeConn{uid: "never-authed"}); ok {
+		t.Fatal("expected no attribution for a never-authenticated connection")
+	}
+}
+
+// End to end: PipeStart fires the session audit with the stored fingerprint.
+func TestPipeStart_EmitsSessionAudit(t *testing.T) {
+	authLine, _ := hostKeyMaterial(t, 0x40)
+	fr := &fakeResolver{
+		route:  &route.Route{IP: "172.29.4.11", Port: 22, User: "student", HostKeys: []string{authLine}},
+		sessCh: make(chan struct{}, 1),
+	}
+	p := newPlugin(t, fr)
+	conn := fakeConn{user: "team-alpha-a1b2", remote: "203.0.113.7:54321", uid: "conn-e2e"}
+	if _, err := p.publicKeyCallback(conn, userKeyWire(t)); err != nil {
+		t.Fatalf("route: %v", err)
+	}
+
+	p.pipeStartCallback(conn)
+	select {
+	case <-fr.sessCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("SessionStart was not called within timeout")
+	}
+	calls := fr.sessionCalls()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 session call, got %d", len(calls))
+	}
+	if calls[0].PublicKeyFingerprint != goldenFingerprint || calls[0].ConnectionID != "conn-e2e" {
+		t.Errorf("bad session audit request: %+v", calls[0])
+	}
+}
+
+// PipeStart on a connection with no attribution must not call SessionStart and
+// must not spawn work (deterministic: buildSessionRequest returns ok=false).
+func TestPipeStart_NoAttributionSkips(t *testing.T) {
+	fr := &fakeResolver{}
+	newPlugin(t, fr).pipeStartCallback(fakeConn{uid: "never-authed"})
+	if got := len(fr.sessionCalls()); got != 0 {
+		t.Fatalf("expected no session call for unattributed connection, got %d", got)
+	}
+}
+
+// A failing session audit must neither panic nor affect the session; the
+// goroutine logs and returns.
+func TestPipeStart_SessionFailureIsHarmless(t *testing.T) {
+	authLine, _ := hostKeyMaterial(t, 0x40)
+	fr := &fakeResolver{
+		route:   &route.Route{IP: "172.29.4.11", Port: 22, User: "student", HostKeys: []string{authLine}},
+		sessErr: errors.New("api down"),
+		sessCh:  make(chan struct{}, 1),
+	}
+	p := newPlugin(t, fr)
+	conn := fakeConn{user: "slug", remote: "203.0.113.7:1", uid: "conn-fail"}
+	if _, err := p.publicKeyCallback(conn, userKeyWire(t)); err != nil {
+		t.Fatalf("route: %v", err)
+	}
+	p.pipeStartCallback(conn) // must return immediately regardless of audit outcome
+	select {
+	case <-fr.sessCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("SessionStart was not attempted")
+	}
+	// Reaching here without panic is the assertion.
 }
 
 func TestHostFromAddr(t *testing.T) {

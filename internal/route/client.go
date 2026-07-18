@@ -195,3 +195,38 @@ func (c *Client) Resolve(ctx context.Context, req Request) (*Route, error) {
 		return nil, fmt.Errorf("route: unexpected status %d: %q", resp.StatusCode, string(raw))
 	}
 }
+
+// SessionStart posts POST /internal/sshgw/session — the authenticated per-user
+// session audit (G6, docs/api/internal.md). Unlike Resolve it carries no
+// authorization decision: the session is already established (sshpiperd fires it
+// from PipeStart, after downstream signature verification), so this call is
+// audit-only. The caller invokes it fire-and-forget with a short-timeout context
+// and never gates the session on the outcome; a non-2xx or transport failure is
+// returned only so the caller can log it. The request is the same shape as the
+// route request, carrying the fingerprint that actually authenticated.
+func (c *Client) SessionStart(ctx context.Context, req Request) error {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("route: marshal session request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		c.cfg.BaseURL+"/internal/sshgw/session", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("route: build session request: %w", err)
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+c.cfg.Token)
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.http.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("route: session request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
+
+	if resp.StatusCode/100 != 2 {
+		return fmt.Errorf("route: session audit unexpected status %d", resp.StatusCode)
+	}
+	return nil
+}
