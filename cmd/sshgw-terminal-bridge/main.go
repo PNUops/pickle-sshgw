@@ -11,8 +11,8 @@
 // credential-cipher key. Configuration is from the environment (or matching
 // flags):
 //
-//	PICKLE_TERMINAL_WS_LISTEN        browser-WS ingress addr      (default 0.0.0.0:8082)
-//	PICKLE_TERMINAL_CONTROL_LISTEN   control addr                 (default 0.0.0.0:8083)
+//	PICKLE_TERMINAL_WS_LISTEN        browser-WS ingress addr      (default 172.30.1.30:8082)
+//	PICKLE_TERMINAL_CONTROL_LISTEN   control addr                 (default 172.30.1.30:8083)
 //	PICKLE_SSHGW_API_BASE            pickle-api base URL          (default http://172.30.1.20:8080)
 //	PICKLE_SSHGW_TOKEN               bridge→api bearer (required — fail-closed if unset)
 //	PICKLE_TERMINAL_CONTROL_TOKEN    inbound control bearer (required — fail-closed if unset)

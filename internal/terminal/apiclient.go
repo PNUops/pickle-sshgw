@@ -73,7 +73,10 @@ func (c *APIClient) Redeem(ctx context.Context, ticket string) (*RedeemResult, e
 			return nil, fmt.Errorf("terminal: redeem 200 missing sessionId/vmIp/port/user: %q", string(raw))
 		}
 		if len(r.HostKeys) == 0 {
-			return nil, fmt.Errorf("terminal: redeem 200 has no hostKeys (fail-closed): %q", string(raw))
+			// Distinguishable from other redeem failures: an absent host-key set
+			// is a host-key (connection) problem — the caller maps it to WS 4006,
+			// not the generic maintenance close.
+			return nil, fmt.Errorf("terminal: redeem 200 has no hostKeys (fail-closed): %q: %w", string(raw), ErrNoHostKeys)
 		}
 		return &r, nil
 	case http.StatusForbidden:
@@ -111,6 +114,10 @@ func (c *APIClient) SessionStart(ctx context.Context, sessionID, clientIP string
 
 // ErrSessionConflict is returned by SessionStart on a 409.
 var ErrSessionConflict = fmt.Errorf("terminal: session-start conflict (409)")
+
+// ErrNoHostKeys wraps a redeem-200 response whose hostKeys array is empty — a
+// host-key/connection failure the WS layer maps to close 4006 (not 1001).
+var ErrNoHostKeys = fmt.Errorf("terminal: redeem returned no host keys")
 
 // SessionEndRequest is the body of POST /internal/terminal/session-end. Byte
 // values are counts only — never content (M5).

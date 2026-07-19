@@ -55,6 +55,10 @@ func TestRedeem_EmptyHostKeysFailsClosed(t *testing.T) {
 	if errors.As(err, &d) {
 		t.Fatalf("empty hostKeys must be a generic error, not a Denial: %v", err)
 	}
+	// Must be distinguishable so the WS layer can map it to 4006 (host-key), not 1001.
+	if !errors.Is(err, ErrNoHostKeys) {
+		t.Fatalf("empty hostKeys must wrap ErrNoHostKeys: %v", err)
+	}
 }
 
 func TestRedeem_UnexpectedStatusIsError(t *testing.T) {
