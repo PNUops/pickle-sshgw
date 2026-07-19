@@ -23,6 +23,8 @@
 //	PICKLE_TERMINAL_IDLE_TIMEOUT     idle timeout                 (default 15m)
 //	PICKLE_TERMINAL_PING_INTERVAL    server WS ping cadence       (default 30s)
 //	PICKLE_TERMINAL_REVALIDATE_INTERVAL  revalidation poll cadence (default 60s)
+//	PICKLE_TERMINAL_MAX_FRAME        WS read limit bytes          (default 1048576)
+//	PICKLE_TERMINAL_MAX_SESSIONS     global concurrent-session cap (default 200)
 //
 // It is fail-closed: a missing token or an unreadable/invalid terminal key aborts
 // startup.
@@ -58,6 +60,8 @@ func main() {
 			&cli.DurationFlag{Name: "idle-timeout", Value: terminal.DefaultIdleTimeout, EnvVars: []string{"PICKLE_TERMINAL_IDLE_TIMEOUT"}, Usage: "idle timeout (client input only)"},
 			&cli.DurationFlag{Name: "ping-interval", Value: terminal.DefaultPingInterval, EnvVars: []string{"PICKLE_TERMINAL_PING_INTERVAL"}, Usage: "server WS ping cadence"},
 			&cli.DurationFlag{Name: "revalidate-interval", Value: terminal.DefaultRevalidateInterval, EnvVars: []string{"PICKLE_TERMINAL_REVALIDATE_INTERVAL"}, Usage: "revalidation poll cadence"},
+			&cli.Int64Flag{Name: "max-frame", Value: terminal.DefaultMaxFrameBytes, EnvVars: []string{"PICKLE_TERMINAL_MAX_FRAME"}, Usage: "WS read limit in bytes (client→bridge)"},
+			&cli.IntFlag{Name: "max-sessions", Value: terminal.DefaultMaxSessions, EnvVars: []string{"PICKLE_TERMINAL_MAX_SESSIONS"}, Usage: "global concurrent-session hard cap"},
 		},
 		Action: run,
 	}
@@ -80,6 +84,8 @@ func run(c *cli.Context) error {
 		IdleTimeout:            c.Duration("idle-timeout"),
 		PingInterval:           c.Duration("ping-interval"),
 		RevalidateInterval:     c.Duration("revalidate-interval"),
+		MaxFrameBytes:          c.Int64("max-frame"),
+		MaxSessions:            c.Int("max-sessions"),
 	}
 	if err := cfg.Validate(); err != nil {
 		return err // fail-closed: missing token / origin / key path

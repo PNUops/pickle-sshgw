@@ -548,6 +548,63 @@ func TestBridge_SessionStartConflictCloses(t *testing.T) {
 	}
 }
 
+// A >32KB client frame (e.g. a large paste) must not exceed the read limit and
+// kill the session — it round-trips through the echo shell.
+func TestBridge_LargeFrameRoundtrip(t *testing.T) {
+	_, api, _, ts := testBridge(t, fakeVMOpts{}, nil)
+	c := connect(t, ts, "tok")
+
+	payload := append(bytes.Repeat([]byte("A"), 100_000), '\n') // ~100KB, > coder's 32KiB default
+	if err := c.send(payload); err != nil {
+		t.Fatalf("send large frame: %v", err)
+	}
+	// The echo comes back chunked by SSH (≤ max packet), reassembled here.
+	var acc []byte
+	deadline := time.After(5 * time.Second)
+	for len(acc) < len(payload) {
+		select {
+		case b := <-c.binary:
+			acc = append(acc, b...)
+		case <-deadline:
+			t.Fatalf("large frame echo incomplete: got %d of %d bytes", len(acc), len(payload))
+		}
+	}
+	if !bytes.Equal(acc[:len(payload)], payload) {
+		t.Fatalf("large frame echo mismatch")
+	}
+	_ = c.conn.Close(websocket.StatusNormalClosure, "bye")
+	waitEndCount(t, api, 1, 3*time.Second)
+}
+
+// The bridge-global session cap rejects an over-cap session with 4006 before any
+// SSH dial or session-start (defence in depth on top of the api caps).
+func TestBridge_MaxSessionsHardCap(t *testing.T) {
+	_, api, _, ts := testBridge(t, fakeVMOpts{}, func(c *Config) {
+		c.MaxSessions = 1
+	})
+	// First session occupies the only slot (long idle/ping/reval keep it alive).
+	c1 := connect(t, ts, "tok-1")
+	_ = c1.send([]byte("hi\n"))
+	c1.awaitBinaryContains(t, "hi", 3*time.Second)
+
+	// Second is rejected at capacity: accept-then-close 4006, never started.
+	c2 := connect(t, ts, "tok-2")
+	if got := c2.awaitClose(t, 3*time.Second); got != closeConnFailed {
+		t.Fatalf("over-cap close code = %d, want 4006", got)
+	}
+	if len(api.sessionStarts) != 1 {
+		t.Fatalf("over-cap session must not report session-start; starts=%+v", api.sessionStarts)
+	}
+
+	// After the first closes, a new session is admitted again.
+	_ = c1.conn.Close(websocket.StatusNormalClosure, "bye")
+	waitEndCount(t, api, 1, 3*time.Second)
+	c3 := connect(t, ts, "tok-3")
+	_ = c3.send([]byte("yo\n"))
+	c3.awaitBinaryContains(t, "yo", 3*time.Second)
+	_ = c3.conn.Close(websocket.StatusNormalClosure, "bye")
+}
+
 func TestBridge_Shutdown(t *testing.T) {
 	b, api, _, ts := testBridge(t, fakeVMOpts{}, nil)
 	c := connect(t, ts, "tok")

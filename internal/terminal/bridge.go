@@ -28,6 +28,7 @@ type Bridge struct {
 
 	mu       sync.Mutex
 	sessions map[string]*session
+	active   int // reserved+registered slot count, for the global hard cap
 	closed   bool
 }
 
@@ -85,6 +86,9 @@ func (b *Bridge) handleWS(w http.ResponseWriter, r *http.Request) {
 		log.WithField("err", err.Error()).Warn("terminal WS accept failed")
 		return
 	}
+	// Raise the client→bridge read limit above coder's 32KiB default so a large
+	// paste (e.g. into vim) does not error the read and kill the session.
+	conn.SetReadLimit(b.cfg.MaxFrameBytes)
 
 	// ⑤ redeem the ticket. On a deny, accept-then-close with the mapped code (the
 	// browser cannot read a close code from a rejected *handshake*, so we accept
@@ -118,6 +122,14 @@ func (b *Bridge) handleWS(w http.ResponseWriter, r *http.Request) {
 // serveSession dials the VM, reports session-start, and runs the relay until the
 // session ends. All teardown flows through session.end exactly once.
 func (b *Bridge) serveSession(conn *websocket.Conn, res *RedeemResult, clientIP string) {
+	// Global hard cap (defence in depth on top of the api caps). Reserve a slot
+	// before any SSH dial or session-start so a rejected session is never
+	// reported/registered — accept-then-close 4006.
+	if !b.acquire() {
+		log.WithField("sessionId", res.SessionID).Warn("terminal at session capacity, rejecting (4006)")
+		closeWith(conn, closeConnFailed)
+		return
+	}
 	s := &session{
 		id:        res.SessionID,
 		conn:      conn,
@@ -219,6 +231,28 @@ func (b *Bridge) serveSession(conn *websocket.Conn, res *RedeemResult, clientIP 
 	// connection closes; end() is idempotent so a concurrent cause wins the reason.
 	s.readLoop()
 	s.end(EndClientClosed, closeNormal)
+}
+
+// acquire reserves a session slot under the global cap. It returns false when the
+// bridge is at capacity or shutting down. Every successful acquire is balanced by
+// exactly one release (called from session.end).
+func (b *Bridge) acquire() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.closed || b.active >= b.cfg.MaxSessions {
+		return false
+	}
+	b.active++
+	return true
+}
+
+// release returns a previously acquired slot.
+func (b *Bridge) release() {
+	b.mu.Lock()
+	if b.active > 0 {
+		b.active--
+	}
+	b.mu.Unlock()
 }
 
 func (b *Bridge) register(s *session) {
@@ -421,6 +455,7 @@ func (s *session) end(reason string, code websocket.StatusCode) {
 		}
 		if s.bridge != nil {
 			s.bridge.unregister(s.id)
+			s.bridge.release() // balance the acquire from serveSession
 		}
 
 		dur := int64(time.Since(s.startedAt).Seconds())

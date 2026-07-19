@@ -38,6 +38,15 @@ const (
 	DefaultWSWriteTimeout      = 10 * time.Second
 	DefaultAPITimeout          = 5 * time.Second
 	DefaultControlExitFrameWin = 3 * time.Second
+	// DefaultMaxFrameBytes is the WS read limit (client→bridge). coder's default
+	// is 32KiB, which would kill a session on a >32KB paste (e.g. pasting a file
+	// into vim); 1MiB comfortably covers realistic pastes. The echo hop back to
+	// the client is chunked by SSH (≤ max packet) so it stays under the client's
+	// own read limit.
+	DefaultMaxFrameBytes = 1 << 20
+	// DefaultMaxSessions is a bridge-global hard cap on concurrent sessions
+	// (defence in depth on top of the api-side per-user/VM/org caps).
+	DefaultMaxSessions = 200
 	// DefaultRevalidateMaxFailures bounds the fail-open window: after this many
 	// *consecutive* revalidation-poll transport errors the session is closed
 	// (1001) rather than kept alive indefinitely — otherwise a long api outage
@@ -87,6 +96,12 @@ type Config struct {
 	// before the session is closed (fail-open is bounded, not indefinite). Zero
 	// uses DefaultRevalidateMaxFailures. An explicit deny always closes at once.
 	RevalidateMaxFailures int
+	// MaxFrameBytes is the WS read limit (client→bridge). Zero uses
+	// DefaultMaxFrameBytes.
+	MaxFrameBytes int64
+	// MaxSessions is the bridge-global concurrent-session hard cap. Zero uses
+	// DefaultMaxSessions.
+	MaxSessions int
 	// SSHConnectTimeout bounds the dial+handshake to the VM.
 	SSHConnectTimeout time.Duration
 	// WSWriteTimeout bounds a single WS write; exceeding it (slow client) closes
@@ -136,6 +151,12 @@ func (c *Config) applyDefaults() {
 	}
 	if c.RevalidateMaxFailures <= 0 {
 		c.RevalidateMaxFailures = DefaultRevalidateMaxFailures
+	}
+	if c.MaxFrameBytes <= 0 {
+		c.MaxFrameBytes = DefaultMaxFrameBytes
+	}
+	if c.MaxSessions <= 0 {
+		c.MaxSessions = DefaultMaxSessions
 	}
 	if c.SSHConnectTimeout <= 0 {
 		c.SSHConnectTimeout = DefaultSSHConnectTimeout
