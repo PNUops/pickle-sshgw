@@ -1,0 +1,33 @@
+[Unit]
+# Pickle web-terminal bridge (M6.5): terminates the browser WebSocket and pipes
+# it to the user VM over a locked-down SSH connection. Enforcer half of the
+# control/data-plane split (docs/plan/05-ssh-access.md Path B). Low-privilege:
+# no DB, no Proxmox token, no credential-cipher key.
+#
+# Installed by the infra layer (W2, deploy-sshgw pair-swap); not installed by the
+# repo. Reads config from /etc/pickle/sshgw.env — the mandatory secrets are
+# PICKLE_SSHGW_TOKEN (bridge->api) and PICKLE_TERMINAL_CONTROL_TOKEN (inbound
+# control). The terminal key lives at /etc/pickle/sshgw/terminal_ed25519_key.
+Description=Pickle web-terminal bridge (browser WS -> locked-down SSH to VM)
+After=network.target
+Wants=network.target
+
+[Service]
+User=pickle
+Group=pickle
+EnvironmentFile=/etc/pickle/sshgw.env
+ExecStart=/opt/pickle/sshgw/bin/sshgw-terminal-bridge
+Restart=on-failure
+RestartSec=5
+# Graceful deploy pair-swap: SIGTERM closes live sessions (1001 + BRIDGE_SHUTDOWN
+# audit) and drains the HTTP listeners before exit.
+KillSignal=SIGTERM
+TimeoutStopSec=20
+# Hardening (same level as the sshpiperd / proxyfront units).
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
