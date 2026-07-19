@@ -18,8 +18,8 @@
 //	PICKLE_TERMINAL_CONTROL_TOKEN    inbound control bearer (required — fail-closed if unset)
 //	PICKLE_TERMINAL_CONSOLE_ORIGIN   exact browser Origin         (default https://pickle.pnuops.com)
 //	PICKLE_TERMINAL_KEY_FILE         platform terminal ed25519 key (default /etc/pickle/sshgw/terminal_ed25519_key)
-//	PICKLE_TERMINAL_WS_SOURCE_IP     allowed WS peer (nginx)       (default 172.30.1.10)
-//	PICKLE_TERMINAL_CONTROL_SOURCE_IP allowed control peer (api)   (default 172.30.1.20)
+//	PICKLE_TERMINAL_WS_PEER          allowed WS peer (nginx)       (default 172.30.1.10)
+//	PICKLE_TERMINAL_CONTROL_PEER     allowed control peer (api)    (default 172.30.1.20)
 //	PICKLE_TERMINAL_IDLE_TIMEOUT     idle timeout                 (default 15m)
 //	PICKLE_TERMINAL_PING_INTERVAL    server WS ping cadence       (default 30s)
 //	PICKLE_TERMINAL_REVALIDATE_INTERVAL  revalidation poll cadence (default 60s)
@@ -53,8 +53,8 @@ func main() {
 			&cli.StringFlag{Name: "control-token", EnvVars: []string{"PICKLE_TERMINAL_CONTROL_TOKEN"}, Usage: "inbound control bearer token (required)"},
 			&cli.StringFlag{Name: "console-origin", Value: terminal.DefaultConsoleOrigin, EnvVars: []string{"PICKLE_TERMINAL_CONSOLE_ORIGIN"}, Usage: "exact browser Origin to accept"},
 			&cli.StringFlag{Name: "key-file", Value: terminal.DefaultTerminalKeyFile, EnvVars: []string{"PICKLE_TERMINAL_KEY_FILE"}, Usage: "platform terminal ed25519 private key"},
-			&cli.StringFlag{Name: "ws-source-ip", Value: terminal.DefaultWSAllowedSourceIP, EnvVars: []string{"PICKLE_TERMINAL_WS_SOURCE_IP"}, Usage: "allowed WS peer IP (nginx tier)"},
-			&cli.StringFlag{Name: "control-source-ip", Value: terminal.DefaultControlSourceIP, EnvVars: []string{"PICKLE_TERMINAL_CONTROL_SOURCE_IP"}, Usage: "allowed control peer IP (pickle-api)"},
+			&cli.StringFlag{Name: "ws-peer", Value: terminal.DefaultWSAllowedSourceIP, EnvVars: []string{"PICKLE_TERMINAL_WS_PEER"}, Usage: "allowed WS peer IP (nginx tier)"},
+			&cli.StringFlag{Name: "control-peer", Value: terminal.DefaultControlSourceIP, EnvVars: []string{"PICKLE_TERMINAL_CONTROL_PEER"}, Usage: "allowed control peer IP (pickle-api)"},
 			&cli.DurationFlag{Name: "idle-timeout", Value: terminal.DefaultIdleTimeout, EnvVars: []string{"PICKLE_TERMINAL_IDLE_TIMEOUT"}, Usage: "idle timeout (client input only)"},
 			&cli.DurationFlag{Name: "ping-interval", Value: terminal.DefaultPingInterval, EnvVars: []string{"PICKLE_TERMINAL_PING_INTERVAL"}, Usage: "server WS ping cadence"},
 			&cli.DurationFlag{Name: "revalidate-interval", Value: terminal.DefaultRevalidateInterval, EnvVars: []string{"PICKLE_TERMINAL_REVALIDATE_INTERVAL"}, Usage: "revalidation poll cadence"},
@@ -75,8 +75,8 @@ func run(c *cli.Context) error {
 		ControlToken:           c.String("control-token"),
 		ConsoleOrigin:          c.String("console-origin"),
 		TerminalKeyFile:        c.String("key-file"),
-		WSAllowedSourceIP:      c.String("ws-source-ip"),
-		ControlAllowedSourceIP: c.String("control-source-ip"),
+		WSAllowedSourceIP:      c.String("ws-peer"),
+		ControlAllowedSourceIP: c.String("control-peer"),
 		IdleTimeout:            c.Duration("idle-timeout"),
 		PingInterval:           c.Duration("ping-interval"),
 		RevalidateInterval:     c.Duration("revalidate-interval"),

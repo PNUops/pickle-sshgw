@@ -24,8 +24,8 @@ import (
 // tests, direct Config fields) so the timing-sensitive behaviours can be exercised
 // quickly.
 const (
-	DefaultWSListen            = "0.0.0.0:8082"
-	DefaultControlListen       = "0.0.0.0:8083"
+	DefaultWSListen            = "172.30.1.30:8082"
+	DefaultControlListen       = "172.30.1.30:8083"
 	DefaultAPIBase             = "http://172.30.1.20:8080"
 	DefaultConsoleOrigin       = "https://pickle.pnuops.com"
 	DefaultTerminalKeyFile     = "/etc/pickle/sshgw/terminal_ed25519_key"
