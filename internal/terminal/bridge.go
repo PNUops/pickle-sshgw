@@ -101,6 +101,12 @@ func (b *Bridge) handleWS(w http.ResponseWriter, r *http.Request) {
 			closeWith(conn, code)
 			return
 		}
+		if errors.Is(err, ErrNoHostKeys) {
+			// Host-key problem, not a maintenance condition → 4006.
+			log.WithField("err", err.Error()).Warn("terminal redeem returned no host keys (fail-closed)")
+			closeWith(conn, closeConnFailed)
+			return
+		}
 		log.WithField("err", err.Error()).Warn("terminal redeem failed (fail-closed)")
 		closeWith(conn, closeMaintenance)
 		return
@@ -352,12 +358,17 @@ func (s *session) pingLoop() {
 }
 
 // revalidateLoop polls the api every RevalidateInterval. An explicit deny closes
-// the session (reason mapped to a close code, reported as REVALIDATION_DENIED). A
-// transport error is fail-open (a single missed poll must not kill a live session
-// during an api blip; an api restart surfaces later as SESSION_UNKNOWN).
+// the session at once (reason mapped to a close code, reported as
+// REVALIDATION_DENIED). A transport error is fail-open — a single missed poll must
+// not kill a live session during an api blip — but only up to
+// RevalidateMaxFailures *consecutive* errors: past that the session is closed
+// 1001, so a prolonged api outage cannot leave a session immune to the kill
+// switch / membership revocation / admin force-terminate (all api-mediated). A
+// successful poll resets the counter.
 func (s *session) revalidateLoop() {
 	t := time.NewTicker(s.cfg.RevalidateInterval)
 	defer t.Stop()
+	failures := 0
 	for {
 		select {
 		case <-s.ctx.Done():
@@ -367,6 +378,7 @@ func (s *session) revalidateLoop() {
 			err := s.api.Revalidate(ctx, s.id)
 			cancel()
 			if err == nil {
+				failures = 0
 				continue
 			}
 			var d *Denial
@@ -376,8 +388,15 @@ func (s *session) revalidateLoop() {
 				s.end(EndRevalidationDenied, closeCodeForReason(d.Reason))
 				return
 			}
-			// Transport error: log and keep the session (fail-open on a blip).
-			log.WithFields(log.Fields{"sessionId": s.id, "err": err.Error()}).
+			failures++
+			if failures >= s.cfg.RevalidateMaxFailures {
+				log.WithFields(log.Fields{"sessionId": s.id, "failures": failures, "err": err.Error()}).
+					Warn("terminal revalidation failed too many times consecutively (closing)")
+				s.end(EndRevalidationDenied, closeMaintenance)
+				return
+			}
+			// Transport error under the cap: log and keep the session (fail-open).
+			log.WithFields(log.Fields{"sessionId": s.id, "failures": failures, "err": err.Error()}).
 				Warn("terminal revalidation poll failed (kept alive)")
 		}
 	}

@@ -160,6 +160,7 @@ type fakeAPI struct {
 	redeemStatusOverride int          // if non-zero, return this raw status (transport-error simulation)
 	sessionStartStatus   int          // default 204
 	revalidateFn         func(n int64) (allow bool, reason string)
+	revalidateStatusFn   func(n int64) int // if it returns non-0/non-200, that raw status is sent (transport-error sim)
 
 	// captures
 	mu              sync.Mutex
@@ -216,6 +217,12 @@ func (a *fakeAPI) handle(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	case "/internal/terminal/revalidate":
 		n := a.revalidateCalls.Add(1)
+		if a.revalidateStatusFn != nil {
+			if st := a.revalidateStatusFn(n); st != 0 && st != http.StatusOK {
+				w.WriteHeader(st) // simulate an api transport/5xx error
+				return
+			}
+		}
 		allow, reason := true, ""
 		if a.revalidateFn != nil {
 			allow, reason = a.revalidateFn(n)

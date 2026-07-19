@@ -38,6 +38,13 @@ const (
 	DefaultWSWriteTimeout      = 10 * time.Second
 	DefaultAPITimeout          = 5 * time.Second
 	DefaultControlExitFrameWin = 3 * time.Second
+	// DefaultRevalidateMaxFailures bounds the fail-open window: after this many
+	// *consecutive* revalidation-poll transport errors the session is closed
+	// (1001) rather than kept alive indefinitely — otherwise a long api outage
+	// would leave sessions immune to kill-switch/membership-revocation/admin
+	// force-terminate (all of which flow through api). At the 60s default poll
+	// this is ~5 minutes.
+	DefaultRevalidateMaxFailures = 5
 )
 
 // Config holds the bridge configuration, sourced from the environment by the
@@ -76,6 +83,10 @@ type Config struct {
 	PingInterval time.Duration
 	// RevalidateInterval is the bridge→api revalidation poll cadence.
 	RevalidateInterval time.Duration
+	// RevalidateMaxFailures caps consecutive revalidation-poll transport errors
+	// before the session is closed (fail-open is bounded, not indefinite). Zero
+	// uses DefaultRevalidateMaxFailures. An explicit deny always closes at once.
+	RevalidateMaxFailures int
 	// SSHConnectTimeout bounds the dial+handshake to the VM.
 	SSHConnectTimeout time.Duration
 	// WSWriteTimeout bounds a single WS write; exceeding it (slow client) closes
@@ -122,6 +133,9 @@ func (c *Config) applyDefaults() {
 	}
 	if c.RevalidateInterval <= 0 {
 		c.RevalidateInterval = DefaultRevalidateInterval
+	}
+	if c.RevalidateMaxFailures <= 0 {
+		c.RevalidateMaxFailures = DefaultRevalidateMaxFailures
 	}
 	if c.SSHConnectTimeout <= 0 {
 		c.SSHConnectTimeout = DefaultSSHConnectTimeout

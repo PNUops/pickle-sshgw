@@ -421,6 +421,68 @@ func TestBridge_RevalidateDenyCloses(t *testing.T) {
 	}
 }
 
+// A prolonged run of revalidation transport errors must eventually close the
+// session (bounded fail-open) so it cannot outlive api-mediated revocation.
+func TestBridge_RevalidateConsecutiveFailuresClose(t *testing.T) {
+	_, api, _, ts := testBridge(t, fakeVMOpts{}, func(c *Config) {
+		c.RevalidateInterval = 50 * time.Millisecond
+		c.RevalidateMaxFailures = 3
+	})
+	api.revalidateStatusFn = func(int64) int { return http.StatusInternalServerError }
+	c := connect(t, ts, "tok")
+	if got := c.awaitClose(t, 3*time.Second); got != closeMaintenance {
+		t.Fatalf("close code = %d, want 1001 after consecutive revalidation failures", got)
+	}
+	waitEndCount(t, api, 1, 2*time.Second)
+	if api.sessionEnds[0].Reason != EndRevalidationDenied {
+		t.Fatalf("end reason = %q, want REVALIDATION_DENIED", api.sessionEnds[0].Reason)
+	}
+	if api.revalidateCalls.Load() < 3 {
+		t.Fatalf("expected >=3 revalidation attempts before close, got %d", api.revalidateCalls.Load())
+	}
+}
+
+// A success between failures resets the counter, so a fail/fail/success pattern
+// (never MaxFailures consecutive) keeps the session alive.
+func TestBridge_RevalidateFailureCounterResets(t *testing.T) {
+	_, api, _, ts := testBridge(t, fakeVMOpts{}, func(c *Config) {
+		c.RevalidateInterval = 40 * time.Millisecond
+		c.RevalidateMaxFailures = 3
+	})
+	// Every 3rd poll succeeds → at most 2 consecutive failures, below the cap.
+	api.revalidateStatusFn = func(n int64) int {
+		if n%3 == 0 {
+			return http.StatusOK
+		}
+		return http.StatusInternalServerError
+	}
+	c := connect(t, ts, "tok")
+	time.Sleep(500 * time.Millisecond) // ~12 polls
+	select {
+	case code := <-c.closeCode:
+		t.Fatalf("session closed early (%d) — counter should reset on each success", code)
+	default:
+	}
+	if api.revalidateCalls.Load() < 6 {
+		t.Fatalf("expected the session to keep polling (>=6), got %d", api.revalidateCalls.Load())
+	}
+	_ = c.conn.Close(websocket.StatusNormalClosure, "bye")
+}
+
+// A redeem-200 with an empty hostKeys array is a host-key/connection failure →
+// close 4006 (not the 1001 maintenance bucket).
+func TestBridge_RedeemEmptyHostKeysClosesConnFailed(t *testing.T) {
+	_, api, _, ts := testBridge(t, fakeVMOpts{}, nil)
+	api.redeemResult.HostKeys = nil // 200 but no host keys
+	c := connect(t, ts, "tok")
+	if got := c.awaitClose(t, 3*time.Second); got != closeConnFailed {
+		t.Fatalf("close code = %d, want 4006 for empty hostKeys", got)
+	}
+	if len(api.sessionStarts) != 0 {
+		t.Fatalf("empty hostKeys must not start a session: %+v", api.sessionStarts)
+	}
+}
+
 func TestBridge_RevalidateSessionUnknownClosesMaintenance(t *testing.T) {
 	_, api, _, ts := testBridge(t, fakeVMOpts{}, func(c *Config) {
 		c.RevalidateInterval = 120 * time.Millisecond
