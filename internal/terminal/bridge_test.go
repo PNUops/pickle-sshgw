@@ -521,6 +521,44 @@ func TestBridge_ControlTerminate(t *testing.T) {
 	}
 }
 
+// /control/terminate must return 204 promptly even when teardown is slow (a slow
+// client WS close or a slow bridge→api session-end): it is an idempotent directive
+// run asynchronously, so it must not block on teardown and outlast pickle-api's
+// short control read timeout (which caused api to 503 and skip the audit).
+func TestBridge_ControlTerminateReturnsFastDespiteSlowSessionEnd(t *testing.T) {
+	b, api, _, ts := testBridge(t, fakeVMOpts{}, nil)
+	api.sessionEndDelay = 2 * time.Second // slow session-end POST
+	c := connect(t, ts, "tok")
+	_ = c.send([]byte("hi\n"))
+	c.awaitBinaryContains(t, "hi", 3*time.Second)
+
+	req := httptest.NewRequest(http.MethodPost, "/control/terminate",
+		strings.NewReader(`{"sessionId":"sess-1"}`))
+	req.RemoteAddr = "127.0.0.1:5000"
+	req.Header.Set("Authorization", "Bearer ctok")
+	rec := httptest.NewRecorder()
+
+	start := time.Now()
+	b.ControlHandler().ServeHTTP(rec, req)
+	elapsed := time.Since(start)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("control terminate = %d, want 204", rec.Code)
+	}
+	if elapsed > 500*time.Millisecond {
+		t.Fatalf("control terminate blocked on teardown: %v (must be async)", elapsed)
+	}
+	// The WS still closes 4002 (close happens before the slow session-end POST).
+	if got := c.awaitClose(t, 4*time.Second); got != closeForce {
+		t.Fatalf("close code = %d, want 4002", got)
+	}
+	// And session-end (delayed) is eventually recorded as FORCE_TERMINATED.
+	waitEndCount(t, api, 1, 4*time.Second)
+	if api.sessionEnds[0].Reason != EndForceTerminated {
+		t.Fatalf("end reason = %q, want FORCE_TERMINATED", api.sessionEnds[0].Reason)
+	}
+}
+
 func TestBridge_ServerInitiatedChannelRejected(t *testing.T) {
 	_, api, vm, ts := testBridge(t, fakeVMOpts{attemptServerChannel: true}, nil)
 	c := connect(t, ts, "tok")

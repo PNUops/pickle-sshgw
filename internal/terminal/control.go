@@ -47,7 +47,14 @@ func (b *Bridge) handleControl(w http.ResponseWriter, r *http.Request) {
 
 	if s, ok := b.lookup(req.SessionID); ok {
 		log.WithField("sessionId", req.SessionID).Info("terminal force-terminate")
-		s.end(EndForceTerminated, closeForce)
+		// Run teardown asynchronously and answer 204 at once. terminate is an
+		// idempotent *directive*, not a request to block until teardown (WS close +
+		// SSH + the bridge→api session-end POST) completes — doing it synchronously
+		// let a slow client / slow api outlast pickle-api's ~3s control read
+		// timeout, so api saw a 503 and skipped the force_terminate audit even
+		// though the bridge closed the session correctly. endOnce guarantees a
+		// single execution regardless of the caller.
+		go s.end(EndForceTerminated, closeForce)
 	}
 	// Idempotent: unknown/already-closed sessionId is a 204 no-op.
 	w.WriteHeader(http.StatusNoContent)

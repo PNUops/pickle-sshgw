@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -161,6 +162,7 @@ type fakeAPI struct {
 	sessionStartStatus   int          // default 204
 	revalidateFn         func(n int64) (allow bool, reason string)
 	revalidateStatusFn   func(n int64) int // if it returns non-0/non-200, that raw status is sent (transport-error sim)
+	sessionEndDelay      time.Duration     // artificial delay before responding to session-end (slow-api sim)
 
 	// captures
 	mu              sync.Mutex
@@ -209,6 +211,9 @@ func (a *fakeAPI) handle(w http.ResponseWriter, r *http.Request) {
 		a.mu.Unlock()
 		w.WriteHeader(a.sessionStartStatus)
 	case "/internal/terminal/session-end":
+		if a.sessionEndDelay > 0 {
+			time.Sleep(a.sessionEndDelay) // simulate a slow api session-end
+		}
 		var body SessionEndRequest
 		_ = json.Unmarshal(raw, &body)
 		a.mu.Lock()
