@@ -1,8 +1,8 @@
 // Package proxyfront is the PROXY-protocol-required ingress shim that fronts
 // sshpiperd on the Pickle SSH gateway.
 //
-// Why it exists: the frozen contract (docs/api/internal.md Link 1, "PROXY
-// protocol trust conditions") requires the :22 listener to run in PROXY-REQUIRED
+// Why it exists: the internal route contract's "PROXY protocol trust
+// conditions" require the :22 listener to run in PROXY-REQUIRED
 // mode — a connection that does not open with a valid PROXY protocol v2 header
 // from the WireGuard peer is dropped with no SSH bytes exchanged, and there is
 // no fallback to trusting the raw TCP source. sshpiperd's built-in PROXY support

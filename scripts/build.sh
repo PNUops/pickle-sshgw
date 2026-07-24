@@ -2,10 +2,10 @@
 # Builds the three Pickle SSH gateway binaries into ./dist:
 #   sshgw-proxyfront       — PROXY-required ingress shim (listens on the WG addr)
 #   sshgw-route-plugin     — sshpiperd gRPC routing plugin (slug → pickle-api)
-#   sshgw-terminal-bridge  — M6.5 web-terminal bridge (browser WS → SSH to VM)
+#   sshgw-terminal-bridge  — web-terminal bridge (browser WS → SSH to VM)
 # The stock sshpiperd binary is installed separately by the LXC create script.
 # CGO is disabled for a static, portable binary. Output is consumed by the
-# infra deploy step (or copied into the sshgw LXC at /opt/pickle/sshgw/bin).
+# deploy step (or copied into the sshgw LXC at /opt/pickle/sshgw/bin).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

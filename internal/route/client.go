@@ -1,5 +1,5 @@
-// Package route is the client for Link 1 of the internal infra API
-// (docs/api/internal.md): sshgw → pickle-api POST /internal/sshgw/route.
+// Package route is the client for the internal route API:
+// sshgw → pickle-api POST /internal/sshgw/route.
 // It resolves an SSH slug to the upstream VM the session should be piped to,
 // or reports why the route was denied. It is deliberately fail-closed: any
 // transport error, unexpected status, or unparseable body yields an error and
@@ -110,8 +110,8 @@ func (d *Denial) Machine() string {
 	return d.Code
 }
 
-// Request is the route-resolution request body (v2, per docs/api/internal.md
-// Link 1). AuthMethod is always sent; PublicKeyFingerprint travels only on the
+// Request is the route-resolution request body (contract v2). AuthMethod is
+// always sent; PublicKeyFingerprint travels only on the
 // publickey path and ConnectionID only when known — both are omitted otherwise
 // so the wire matches the contract's field-presence rules.
 type Request struct {
@@ -212,7 +212,7 @@ func (c *Client) Resolve(ctx context.Context, req Request) (*Route, error) {
 }
 
 // SessionStart posts POST /internal/sshgw/session — the authenticated per-user
-// session audit (G6, docs/api/internal.md). Unlike Resolve it carries no
+// session audit. Unlike Resolve it carries no
 // authorization decision: the session is already established (sshpiperd fires it
 // from PipeStart, after downstream signature verification), so this call is
 // audit-only. The caller invokes it fire-and-forget with a short-timeout context

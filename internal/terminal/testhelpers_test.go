@@ -148,7 +148,7 @@ func (vm *fakeVM) handleSession(ch ssh.Channel, reqs <-chan *ssh.Request) {
 	}
 }
 
-// --- fake pickle-api (Link 3a internal endpoints) --------------------------
+// --- fake pickle-api (internal terminal endpoints) -------------------------
 
 // fakeAPI is a configurable stand-in for pickle-api's /internal/terminal/*
 // endpoints. All behaviour knobs are set before use; captures are read after.

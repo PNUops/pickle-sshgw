@@ -11,8 +11,8 @@ import (
 	"time"
 )
 
-// APIClient calls Link 3a of the internal infra API (docs/api/internal.md):
-// bridge → pickle-api under /internal/terminal/. Same server-side chain as Link 1
+// APIClient calls the internal terminal API:
+// bridge → pickle-api under /internal/terminal/. Same server-side chain as the route API
 // (Bearer PICKLE_SSHGW_TOKEN, source 172.30.1.30). Every call is fail-closed: a
 // transport error or unexpected status is surfaced to the caller, never silently
 // treated as success.
@@ -47,7 +47,7 @@ type RedeemResult struct {
 }
 
 // Denial is a structured redeem/revalidate deny (403 {reason} for redeem, or a
-// revalidate 200 with allow=false and a reason). Reason carries the Link 3 codes.
+// revalidate 200 with allow=false and a reason). Reason carries the session-end codes.
 type Denial struct {
 	Reason string
 }
@@ -120,7 +120,7 @@ var ErrSessionConflict = fmt.Errorf("terminal: session-start conflict (409)")
 var ErrNoHostKeys = fmt.Errorf("terminal: redeem returned no host keys")
 
 // SessionEndRequest is the body of POST /internal/terminal/session-end. Byte
-// values are counts only — never content (M5).
+// values are counts only — never content.
 type SessionEndRequest struct {
 	SessionID       string `json:"sessionId"`
 	Reason          string `json:"reason"`
@@ -129,7 +129,7 @@ type SessionEndRequest struct {
 	BytesOut        int64  `json:"bytesOut"`
 }
 
-// Session-end reason values (docs/api/internal.md Link 3).
+// Session-end reason values.
 const (
 	EndClientClosed       = "CLIENT_CLOSED"
 	EndIdleTimeout        = "IDLE_TIMEOUT"

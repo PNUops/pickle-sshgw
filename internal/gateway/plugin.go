@@ -58,7 +58,7 @@ func New(resolver Resolver, platformKey []byte) *Plugin {
 // callbacks — public key (the default identity path), password (per-VM opt-in
 // passthrough), and upstream host-key verification (pins the VM's collected host
 // key) — plus PipeStart, which fires once per established session and emits the
-// authenticated per-user audit (G6).
+// authenticated per-user session audit.
 func (p *Plugin) Config() *libplugin.SshPiperPluginConfig {
 	return &libplugin.SshPiperPluginConfig{
 		PublicKeyCallback:     p.publicKeyCallback,
@@ -150,8 +150,8 @@ func (p *Plugin) passwordCallback(conn libplugin.ConnMetadata, password []byte) 
 
 	p.store.putHostKeys(connID, r.HostKeys)
 	// Password sessions carry no per-user identity: mark the method (no
-	// fingerprint) so the session audit attributes actor=null (documented G6
-	// opt-in). Last-write-wins over any earlier publickey candidate.
+	// fingerprint) so the session audit attributes actor=null (documented
+	// password opt-in). Last-write-wins over any earlier publickey candidate.
 	p.store.setSessionPassword(connID)
 	logRouteAllowed(base, r)
 	return &libplugin.Upstream{
@@ -235,7 +235,7 @@ func isDenial(err error) bool {
 
 // pipeStartCallback fires once per established session, after downstream
 // signature verification (publickey) or password acceptance. It emits the
-// authenticated per-user session audit (sshgw.session, G6) for the credential
+// authenticated per-user session audit (sshgw.session) for the credential
 // that actually authenticated — recovered from the connStore attribution keyed
 // by connection id. The audit runs in a goroutine: sshpiperd invokes this
 // synchronously right before it starts piping bytes, so it must return

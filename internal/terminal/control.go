@@ -9,8 +9,8 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// ControlHandler serves Link 3b (docs/api/internal.md): pickle-api → bridge
-// force-terminate at POST /control/terminate. It authenticates the caller by
+// ControlHandler serves the pickle-api → bridge force-terminate call at
+// POST /control/terminate. It authenticates the caller by
 // bearer token (constant-time) and source IP, then closes the named session with
 // 4002 (FORCE_TERMINATED) if live, or no-ops. It always answers 204 (idempotent).
 func (b *Bridge) ControlHandler() http.Handler {

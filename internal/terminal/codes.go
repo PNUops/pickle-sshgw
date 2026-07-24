@@ -16,8 +16,8 @@ const Subprotocol = "pickle.terminal.v1"
 const ticketPrefix = "ticket."
 
 // WS close codes. 1000/1001 are the standard codes; 4000–4006 are Pickle
-// application-private codes shared with the console (docs/plan/05-ssh-access.md,
-// "종료 코드·한국어 메시지"). The console maps each to a Korean overlay.
+// application-private codes shared with the console. The console maps each to a
+// Korean overlay.
 const (
 	closeNormal        = websocket.StatusNormalClosure // 1000 세션 종료
 	closeMaintenance   = websocket.StatusGoingAway     // 1001 서버 점검
@@ -59,8 +59,8 @@ func closeReason(code websocket.StatusCode) string {
 	return "pickle-terminal"
 }
 
-// Reason codes returned by pickle-api on a redeem/revalidate deny
-// (docs/api/internal.md Link 3). SESSION_UNKNOWN is revalidate-only.
+// Reason codes returned by pickle-api on a redeem/revalidate deny.
+// SESSION_UNKNOWN is revalidate-only.
 const (
 	reasonTicketInvalid    = "TICKET_INVALID"
 	reasonVMNotRunning     = "VM_NOT_RUNNING"

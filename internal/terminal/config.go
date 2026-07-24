@@ -3,8 +3,8 @@
 // Pickle web terminal (console xterm.js) and pipes it to the user's VM over SSH.
 //
 // It holds no DB, no Proxmox token and no credential-cipher key. It is an
-// enforcer in the control/data-plane split (docs/plan/05-ssh-access.md Path B,
-// docs/api/internal.md Link 3): pickle-api mints one-time tickets and answers the
+// enforcer in the control/data-plane split: pickle-api mints one-time tickets
+// and answers the
 // bridge's internal control calls (redeem / session lifecycle / revalidate) while
 // the bridge owns the real WS+SSH sessions and reports them back for the admin
 // mirror. pickle-api never touches terminal bytes.
@@ -70,7 +70,7 @@ type Config struct {
 	// APIBase is the pickle-api base, e.g. "http://172.30.1.20:8080".
 	APIBase string
 	// GatewayToken is the shared bearer PICKLE_SSHGW_TOKEN used on the bridge→api
-	// internal calls (same token/chain as Link 1).
+	// internal calls (same token/chain as the route API).
 	GatewayToken string
 	// ControlToken is PICKLE_TERMINAL_CONTROL_TOKEN, verified on inbound control
 	// requests (distinct token, independent revocation).

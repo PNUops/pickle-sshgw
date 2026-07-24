@@ -1,7 +1,7 @@
 // Command sshgw-terminal-bridge terminates the Pickle web-terminal browser
 // WebSocket on the sshgw LXC (172.30.1.30) and relays it to the user's VM over a
 // locked-down SSH connection. It is the enforcer half of the control/data-plane
-// split (docs/plan/05-ssh-access.md Path B, docs/api/internal.md Link 3):
+// split:
 // pickle-api mints one-time tickets and answers the bridge's internal control
 // calls, while this daemon owns the real WS+SSH session and reports it back.
 //
