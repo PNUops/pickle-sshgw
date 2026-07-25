@@ -13,10 +13,22 @@ Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
 ProtectSystem=full
+ProtectHome=true
 PrivateTmp=true
 # Bind :22 (a privileged port) as the non-root pickle user.
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+# Sandboxing. The shim is a plain TCP relay: it needs INET/INET6 sockets and
+# AF_UNIX for logging, nothing else. @system-service is the stock service
+# baseline; the daemon spawns no children and touches no kernel tunables or
+# devices beyond the standard set PrivateDevices leaves in place.
+PrivateDevices=true
+ProtectKernelTunables=true
+LockPersonality=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
 
 [Install]
 WantedBy=multi-user.target

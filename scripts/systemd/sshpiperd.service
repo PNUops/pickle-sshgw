@@ -15,7 +15,19 @@ ProtectSystem=full
 # sshpiperd generates its host key here on first start (server-key-generate-mode
 # notexist); ProtectSystem=full keeps the rest of /etc read-only.
 ReadWritePaths=/etc/pickle/sshgw
+ProtectHome=true
 PrivateTmp=true
+# Sandboxing. sshpiperd forks the routing plugin and talks to it over a local
+# socket, so exec and AF_UNIX must stay allowed; upstream VM connections and the
+# plugin's calls to the platform API are AF_INET/AF_INET6. @system-service is the
+# stock service baseline and covers all of that.
+PrivateDevices=true
+ProtectKernelTunables=true
+LockPersonality=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
 
 [Install]
 WantedBy=multi-user.target
