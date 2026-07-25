@@ -1,0 +1,24 @@
+[Unit]
+Description=Pickle web-terminal bridge (browser WS -> locked-down SSH to VM)
+After=network.target
+Wants=network.target
+
+[Service]
+User=pickle
+Group=pickle
+EnvironmentFile=/etc/pickle/sshgw.env
+ExecStart=/opt/pickle/sshgw/bin/sshgw-terminal-bridge
+WorkingDirectory=/opt/pickle/sshgw
+Restart=on-failure
+RestartSec=5
+# Graceful deploy pair-swap: the bridge handles SIGTERM (main.go) by closing live
+# sessions (1001 + BRIDGE_SHUTDOWN audit) and draining the HTTP listeners.
+KillSignal=SIGTERM
+TimeoutStopSec=20
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

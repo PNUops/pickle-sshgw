@@ -63,6 +63,16 @@ scripts/verify.sh        # shellcheck → gofmt → go vet → build → test
 scripts/build.sh         # → dist/ 에 바이너리 3종 생성
 ```
 
+## systemd 유닛
+
+`scripts/systemd/` 의 세 유닛 파일(`sshpiperd.service`, `sshgw-proxyfront.service`,
+`sshgw-terminal-bridge.service`)이 게이트웨이 서비스 정의의 **단일 출처**다. 게이트웨이
+호스트에는 이 파일들을 `/etc/systemd/system/` 으로 복사한 뒤 `systemctl daemon-reload`
+로 반영한다. 세 서비스 모두 비-root `pickle` 계정으로 동작하고 토큰이 없으면 기동하지
+않는다(fail-closed). 배포 자동화는 유닛 파일 동기화를 바이너리 교체와 같은 단계에서
+수행해야 한다. 유닛 파일만 고치고 배포에서 동기화하지 않으면 실행 중인 서비스에는
+아무 변화가 없다.
+
 ## 환경 변수 (`/etc/pickle/sshgw.env`)
 
 시크릿 값은 이 저장소에 포함되지 않는다.

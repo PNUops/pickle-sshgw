@@ -1,0 +1,21 @@
+[Unit]
+Description=Pickle sshpiperd (SSH reverse proxy, loopback behind proxyfront)
+After=network.target
+
+[Service]
+User=pickle
+Group=pickle
+EnvironmentFile=/etc/pickle/sshgw.env
+ExecStart=/usr/local/bin/sshpiperd --address 127.0.0.1 --port 2222 --allowed-proxy-addresses 127.0.0.1/32 --proxy-read-header-timeout 5s --server-key /etc/pickle/sshgw/ssh_host_ed25519_key --server-key-generate-mode notexist --log-level info /opt/pickle/sshgw/bin/sshgw-route-plugin
+WorkingDirectory=/opt/pickle/sshgw
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=full
+# sshpiperd generates its host key here on first start (server-key-generate-mode
+# notexist); ProtectSystem=full keeps the rest of /etc read-only.
+ReadWritePaths=/etc/pickle/sshgw
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

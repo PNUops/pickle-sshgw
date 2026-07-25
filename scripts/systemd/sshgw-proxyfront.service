@@ -1,0 +1,22 @@
+[Unit]
+Description=Pickle sshgw PROXY-required ingress shim (:22)
+After=network.target wg-quick@wg0.service sshpiperd.service
+Requires=wg-quick@wg0.service
+Wants=sshpiperd.service
+
+[Service]
+User=pickle
+Group=pickle
+EnvironmentFile=/etc/pickle/sshgw.env
+ExecStart=/opt/pickle/sshgw/bin/sshgw-proxyfront
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+# Bind :22 (a privileged port) as the non-root pickle user.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target
