@@ -16,4 +16,11 @@ if [ -f go.mod ]; then
   go build ./...
   go test ./...
 fi
+# Publication hygiene: no documentation-repo references, no private-repo or vault
+# references, no internal process tokens. Enforced here because two manual scrubs
+# both missed real violations.
+# shellcheck source=scripts/hygiene.sh
+. scripts/hygiene.sh   # cwd is the repo root (set above)
+hygiene_check public
+
 echo "sshgw verify OK"
