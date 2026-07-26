@@ -21,6 +21,7 @@ fi
 # both missed real violations.
 # shellcheck source=scripts/hygiene.sh
 . scripts/hygiene.sh   # cwd is the repo root (set above)
+hygiene_selftest
 hygiene_check public
 
 echo "sshgw verify OK"
