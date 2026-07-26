@@ -22,13 +22,18 @@ PrivateTmp=true
 # Sandboxing. The bridge terminates browser WebSockets and opens SSH sessions to
 # user VMs: INET/INET6 plus AF_UNIX for logging, no children, no devices beyond
 # the standard set, no kernel tunables. @system-service is the stock baseline.
+# Neither daemon binds a privileged port, so it needs no capability at all.
+CapabilityBoundingSet=
 PrivateDevices=true
 ProtectKernelTunables=true
 LockPersonality=true
 RestrictSUIDSGID=true
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 SystemCallFilter=@system-service
-SystemCallErrorNumber=EPERM
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=~user
+SystemCallArchitectures=native
 
 [Install]
 WantedBy=multi-user.target

@@ -28,7 +28,10 @@ LockPersonality=true
 RestrictSUIDSGID=true
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 SystemCallFilter=@system-service
-SystemCallErrorNumber=EPERM
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=~user
+SystemCallArchitectures=native
 
 [Install]
 WantedBy=multi-user.target
