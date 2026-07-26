@@ -77,7 +77,7 @@ Remote가 그대로 동작하는 투명 SSH 파이핑을 수행한다.
 
 ```bash
 scripts/setup-hooks.sh   # 최초 1회: git 훅 설치
-scripts/verify.sh        # shellcheck → gofmt → go vet → build → test
+scripts/verify.sh        # shellcheck → gofmt → go vet → build → test → 공개 위생 검사
 scripts/build.sh         # → dist/ 에 바이너리 3종 생성
 ```
 
@@ -124,3 +124,5 @@ scripts/build.sh         # → dist/ 에 바이너리 3종 생성
 커밋 메시지는 `type: subject` 형식, 영어 명령형, 72자 이내로 작성한다(마침표로 끝내지
 않음). `type`은 feat, fix, docs, test, chore, refactor, perf, build, style, ci,
 revert, merge 중 하나다. commit-msg 훅이 이 규칙을 강제한다.
+
+`scripts/hygiene.sh`는 이 저장소가 공개물이라는 전제를 검사한다 — 비공개 문서 저장소나 인프라 저장소를 가리키는 참조, 내부 진행 표기(마일스톤·웨이브 등)가 있으면 검증이 실패한다. 수동 점검이 두 차례 위반을 놓친 뒤 자동화했다.
