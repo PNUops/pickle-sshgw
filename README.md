@@ -109,7 +109,7 @@ scripts/build.sh         # → dist/ 에 바이너리 3종 생성
 | `PICKLE_TERMINAL_WS_LISTEN` | bridge | 브라우저 WS 인그레스 주소 | `172.30.1.30:8082` |
 | `PICKLE_TERMINAL_CONTROL_LISTEN` | bridge | api→bridge 제어 포트 주소 | `172.30.1.30:8083` |
 | `PICKLE_TERMINAL_CONTROL_TOKEN` | bridge | 인바운드 제어 Bearer (게이트웨이 토큰과 별개로 독립 폐기 가능) | 없음 (미설정 시 fail-closed) |
-| `PICKLE_TERMINAL_CONSOLE_ORIGIN` | bridge | WS 핸드셰이크에서 정확히 일치해야 하는 브라우저 Origin | `https://pickle.pnuops.com` |
+| `PICKLE_TERMINAL_CONSOLE_ORIGIN` | bridge | WS 핸드셰이크에서 정확히 일치해야 하는 브라우저 Origin | `https://pickle.pusan.ac.kr` |
 | `PICKLE_TERMINAL_KEY_FILE` | bridge | 플랫폼 터미널 ed25519 개인키 파일 경로. 읽기 실패·형식 오류도 fail-closed | `/etc/pickle/sshgw/terminal_ed25519_key` |
 | `PICKLE_TERMINAL_WS_PEER` | bridge | WS 인그레스에 도달할 수 있는 유일한 TCP 피어 IP (nginx TLS 계층) | `172.30.1.10` |
 | `PICKLE_TERMINAL_CONTROL_PEER` | bridge | 제어 포트에 도달할 수 있는 유일한 TCP 피어 IP (pickle-api) | `172.30.1.20` |

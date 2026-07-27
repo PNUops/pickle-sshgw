@@ -27,7 +27,7 @@ const (
 	DefaultWSListen            = "172.30.1.30:8082"
 	DefaultControlListen       = "172.30.1.30:8083"
 	DefaultAPIBase             = "http://172.30.1.20:8080"
-	DefaultConsoleOrigin       = "https://pickle.pnuops.com"
+	DefaultConsoleOrigin       = "https://pickle.pusan.ac.kr"
 	DefaultTerminalKeyFile     = "/etc/pickle/sshgw/terminal_ed25519_key"
 	DefaultWSAllowedSourceIP   = "172.30.1.10" // LXC 100 nginx TLS tier
 	DefaultControlSourceIP     = "172.30.1.20" // LXC 101 pickle-api

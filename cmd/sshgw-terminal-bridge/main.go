@@ -16,7 +16,7 @@
 //	PICKLE_SSHGW_API_BASE            pickle-api base URL          (default http://172.30.1.20:8080)
 //	PICKLE_SSHGW_TOKEN               bridge→api bearer (required — fail-closed if unset)
 //	PICKLE_TERMINAL_CONTROL_TOKEN    inbound control bearer (required — fail-closed if unset)
-//	PICKLE_TERMINAL_CONSOLE_ORIGIN   exact browser Origin         (default https://pickle.pnuops.com)
+//	PICKLE_TERMINAL_CONSOLE_ORIGIN   exact browser Origin         (default https://pickle.pusan.ac.kr)
 //	PICKLE_TERMINAL_KEY_FILE         platform terminal ed25519 key (default /etc/pickle/sshgw/terminal_ed25519_key)
 //	PICKLE_TERMINAL_WS_PEER          allowed WS peer (nginx)       (default 172.30.1.10)
 //	PICKLE_TERMINAL_CONTROL_PEER     allowed control peer (api)    (default 172.30.1.20)
