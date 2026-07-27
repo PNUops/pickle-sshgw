@@ -13,14 +13,14 @@ func TestRedeem_AllowAndAuthHeader(t *testing.T) {
 	api := startFakeAPI(t)
 	api.redeemResult = RedeemResult{
 		SessionID: "s1", UserID: 42, VMID: 55, VMIp: "172.29.0.17", Port: 22,
-		User: "student", HostKeys: []string{"ssh-ed25519 AAAA"},
+		User: "ubuntu", HostKeys: []string{"ssh-ed25519 AAAA"},
 	}
 	c := NewAPIClient(api.baseURL(), "tok", 0)
 	res, err := c.Redeem(context.Background(), "ticket-value")
 	if err != nil {
 		t.Fatalf("Redeem: %v", err)
 	}
-	if res.SessionID != "s1" || res.VMIp != "172.29.0.17" || res.User != "student" || len(res.HostKeys) != 1 {
+	if res.SessionID != "s1" || res.VMIp != "172.29.0.17" || res.User != "ubuntu" || len(res.HostKeys) != 1 {
 		t.Fatalf("bad result: %+v", res)
 	}
 	if api.gotAuth != "Bearer tok" {
@@ -45,7 +45,7 @@ func TestRedeem_DenyReasons(t *testing.T) {
 
 func TestRedeem_EmptyHostKeysFailsClosed(t *testing.T) {
 	api := startFakeAPI(t)
-	api.redeemResult = RedeemResult{SessionID: "s", VMIp: "1.2.3.4", Port: 22, User: "student"} // no hostKeys
+	api.redeemResult = RedeemResult{SessionID: "s", VMIp: "1.2.3.4", Port: 22, User: "ubuntu"} // no hostKeys
 	c := NewAPIClient(api.baseURL(), "tok", 0)
 	_, err := c.Redeem(context.Background(), "x")
 	if err == nil {

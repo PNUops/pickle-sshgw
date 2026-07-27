@@ -31,7 +31,7 @@ func testBridge(t *testing.T, vmOpts fakeVMOpts, cfgMut func(*Config)) (*Bridge,
 	port, _ := strconv.Atoi(portStr)
 	api.redeemResult = RedeemResult{
 		SessionID: "sess-1", UserID: 7, VMID: 9,
-		VMIp: host, Port: port, User: "student",
+		VMIp: host, Port: port, User: "ubuntu",
 		HostKeys: []string{vm.hostKeyLine},
 	}
 	cfg := Config{

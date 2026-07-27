@@ -44,7 +44,7 @@ func TestResolve_PublicKey_RequestShapeAndAuth(t *testing.T) {
 	var raw []byte
 	var auth string
 	srv := newServer(t, 200,
-		`{"ip":"172.29.4.11","port":22,"user":"student","hostKeys":["ssh-ed25519 AAAAC3Nza"]}`,
+		`{"ip":"172.29.4.11","port":22,"user":"ubuntu","hostKeys":["ssh-ed25519 AAAAC3Nza"]}`,
 		&raw, &auth)
 	defer srv.Close()
 
@@ -55,7 +55,7 @@ func TestResolve_PublicKey_RequestShapeAndAuth(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	if r.IP != "172.29.4.11" || r.Port != 22 || r.User != "student" {
+	if r.IP != "172.29.4.11" || r.Port != 22 || r.User != "ubuntu" {
 		t.Fatalf("bad route: %+v", r)
 	}
 	if len(r.HostKeys) != 1 || r.HostKeys[0] != "ssh-ed25519 AAAAC3Nza" {
@@ -85,7 +85,7 @@ func TestResolve_PublicKey_RequestShapeAndAuth(t *testing.T) {
 func TestResolve_Password_OmitsFingerprint(t *testing.T) {
 	var raw []byte
 	srv := newServer(t, 200,
-		`{"ip":"172.29.4.11","port":22,"user":"student","hostKeys":["ssh-ed25519 AAAAC3Nza"]}`,
+		`{"ip":"172.29.4.11","port":22,"user":"ubuntu","hostKeys":["ssh-ed25519 AAAAC3Nza"]}`,
 		&raw, nil)
 	defer srv.Close()
 
@@ -193,7 +193,7 @@ func TestResolve_Malformed200IsError(t *testing.T) {
 // A 200 with a valid target but no pinned host keys must be rejected: the
 // gateway may not pipe to a host it cannot verify.
 func TestResolve_EmptyHostKeysFailsClosed(t *testing.T) {
-	srv := newServer(t, 200, `{"ip":"172.29.4.11","port":22,"user":"student","hostKeys":[]}`, nil, nil)
+	srv := newServer(t, 200, `{"ip":"172.29.4.11","port":22,"user":"ubuntu","hostKeys":[]}`, nil, nil)
 	defer srv.Close()
 
 	_, err := mustResolve(mustClient(t, srv.URL))

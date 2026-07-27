@@ -142,7 +142,7 @@ func newPlugin(t *testing.T, fr *fakeResolver) *Plugin {
 
 func TestPublicKeyCallback_Success(t *testing.T) {
 	authLine, _ := hostKeyMaterial(t, 0x40)
-	fr := &fakeResolver{route: &route.Route{IP: "172.29.4.11", Port: 22, User: "student", HostKeys: []string{authLine}}}
+	fr := &fakeResolver{route: &route.Route{IP: "172.29.4.11", Port: 22, User: "ubuntu", HostKeys: []string{authLine}}}
 	platformKey := testPlatformKey(t)
 	p := New(fr, platformKey)
 
@@ -165,7 +165,7 @@ func TestPublicKeyCallback_Success(t *testing.T) {
 		t.Errorf("connectionId: got %q", fr.gotReq.ConnectionID)
 	}
 	// Upstream target from the route, host-key verification ON.
-	if u.GetHost() != "172.29.4.11" || u.GetPort() != 22 || u.GetUserName() != "student" {
+	if u.GetHost() != "172.29.4.11" || u.GetPort() != 22 || u.GetUserName() != "ubuntu" {
 		t.Fatalf("upstream: %+v", u)
 	}
 	if u.GetIgnoreHostKey() {
@@ -184,7 +184,7 @@ func TestPublicKeyCallback_Success(t *testing.T) {
 // contract's join key between sshpiperd, the API, and ssh-keygen.
 func TestPublicKeyCallback_FingerprintGolden(t *testing.T) {
 	authLine, _ := hostKeyMaterial(t, 0x40)
-	fr := &fakeResolver{route: &route.Route{IP: "1.2.3.4", Port: 22, User: "student", HostKeys: []string{authLine}}}
+	fr := &fakeResolver{route: &route.Route{IP: "1.2.3.4", Port: 22, User: "ubuntu", HostKeys: []string{authLine}}}
 	if _, err := newPlugin(t, fr).publicKeyCallback(fakeConn{user: "slug", remote: "203.0.113.7:1"}, userKeyWire(t)); err != nil {
 		t.Fatalf("callback: %v", err)
 	}
@@ -206,7 +206,7 @@ func TestPublicKeyCallback_DenialRefuses(t *testing.T) {
 }
 
 func TestPublicKeyCallback_MalformedKeyFailsClosed(t *testing.T) {
-	fr := &fakeResolver{route: &route.Route{IP: "1.2.3.4", Port: 22, User: "student", HostKeys: []string{"x"}}}
+	fr := &fakeResolver{route: &route.Route{IP: "1.2.3.4", Port: 22, User: "ubuntu", HostKeys: []string{"x"}}}
 	u, err := newPlugin(t, fr).publicKeyCallback(fakeConn{user: "slug", remote: "203.0.113.7:1"}, []byte("not-a-key"))
 	if u != nil || err == nil {
 		t.Fatalf("expected fail-closed on malformed key; got u=%+v err=%v", u, err)
@@ -220,7 +220,7 @@ func TestPublicKeyCallback_MalformedKeyFailsClosed(t *testing.T) {
 // cost exactly one API call.
 func TestPublicKeyCallback_MemoizesProbeAndSign(t *testing.T) {
 	authLine, _ := hostKeyMaterial(t, 0x40)
-	fr := &fakeResolver{route: &route.Route{IP: "172.29.4.11", Port: 22, User: "student", HostKeys: []string{authLine}}}
+	fr := &fakeResolver{route: &route.Route{IP: "172.29.4.11", Port: 22, User: "ubuntu", HostKeys: []string{authLine}}}
 	p := newPlugin(t, fr)
 	conn := fakeConn{user: "slug", remote: "203.0.113.7:1", uid: "conn-memo"}
 	key := userKeyWire(t)
@@ -287,7 +287,7 @@ func TestPasswordCallback_DisabledDenied(t *testing.T) {
 
 func TestPasswordCallback_OptInPassesThroughWithHostKeyPin(t *testing.T) {
 	authLine, hostWire := hostKeyMaterial(t, 0x55)
-	fr := &fakeResolver{route: &route.Route{IP: "172.29.4.11", Port: 22, User: "student", HostKeys: []string{authLine}}}
+	fr := &fakeResolver{route: &route.Route{IP: "172.29.4.11", Port: 22, User: "ubuntu", HostKeys: []string{authLine}}}
 	p := newPlugin(t, fr)
 	conn := fakeConn{user: "team-alpha-a1b2", remote: "203.0.113.7:54321", uid: "conn-pw"}
 
@@ -295,7 +295,7 @@ func TestPasswordCallback_OptInPassesThroughWithHostKeyPin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("callback: %v", err)
 	}
-	if u.GetHost() != "172.29.4.11" || u.GetPort() != 22 || u.GetUserName() != "student" {
+	if u.GetHost() != "172.29.4.11" || u.GetPort() != 22 || u.GetUserName() != "ubuntu" {
 		t.Fatalf("upstream: %+v", u)
 	}
 	// v2: host key pinned, no longer ignored (v1 asserted IgnoreHostKey:true).
@@ -313,7 +313,7 @@ func TestPasswordCallback_OptInPassesThroughWithHostKeyPin(t *testing.T) {
 
 func TestVerifyHostKey_Match(t *testing.T) {
 	authLine, hostWire := hostKeyMaterial(t, 0x11)
-	fr := &fakeResolver{route: &route.Route{IP: "172.29.4.11", Port: 22, User: "student", HostKeys: []string{authLine}}}
+	fr := &fakeResolver{route: &route.Route{IP: "172.29.4.11", Port: 22, User: "ubuntu", HostKeys: []string{authLine}}}
 	p := newPlugin(t, fr)
 	conn := fakeConn{user: "slug", remote: "203.0.113.7:1", uid: "conn-match"}
 	if _, err := p.publicKeyCallback(conn, userKeyWire(t)); err != nil {
@@ -327,7 +327,7 @@ func TestVerifyHostKey_Match(t *testing.T) {
 func TestVerifyHostKey_Mismatch(t *testing.T) {
 	pinnedLine, _ := hostKeyMaterial(t, 0x11)
 	_, otherWire := hostKeyMaterial(t, 0x22) // a different host key
-	fr := &fakeResolver{route: &route.Route{IP: "172.29.4.11", Port: 22, User: "student", HostKeys: []string{pinnedLine}}}
+	fr := &fakeResolver{route: &route.Route{IP: "172.29.4.11", Port: 22, User: "ubuntu", HostKeys: []string{pinnedLine}}}
 	p := newPlugin(t, fr)
 	conn := fakeConn{user: "slug", remote: "203.0.113.7:1", uid: "conn-mismatch"}
 	if _, err := p.publicKeyCallback(conn, userKeyWire(t)); err != nil {
@@ -340,7 +340,7 @@ func TestVerifyHostKey_Mismatch(t *testing.T) {
 
 func TestVerifyHostKey_MissingEntry(t *testing.T) {
 	_, hostWire := hostKeyMaterial(t, 0x11)
-	fr := &fakeResolver{route: &route.Route{IP: "1.2.3.4", Port: 22, User: "student", HostKeys: []string{"x"}}}
+	fr := &fakeResolver{route: &route.Route{IP: "1.2.3.4", Port: 22, User: "ubuntu", HostKeys: []string{"x"}}}
 	p := newPlugin(t, fr)
 	// No preceding route on this connection: fail-closed.
 	if err := p.verifyHostKeyCallback(fakeConn{uid: "never-routed"}, "vm", "1.2.3.4:22", hostWire); err == nil {
@@ -367,7 +367,7 @@ func TestVerifyHostKey_MixedTypeArray(t *testing.T) {
 	}
 	ecLine := string(bytes.TrimSpace(ssh.MarshalAuthorizedKey(ecPub))) // ecdsa pinned entry
 
-	fr := &fakeResolver{route: &route.Route{IP: "172.29.4.11", Port: 22, User: "student",
+	fr := &fakeResolver{route: &route.Route{IP: "172.29.4.11", Port: 22, User: "ubuntu",
 		HostKeys: []string{edLine, ecLine}}}
 	p := newPlugin(t, fr)
 	conn := fakeConn{user: "slug", remote: "203.0.113.7:1", uid: "conn-mixed"}
@@ -441,7 +441,7 @@ func userKeyForSeed(t *testing.T, seedByte byte) (wire []byte, fingerprint strin
 // exactly that one fingerprint as the sole candidate, plus connection context.
 func TestBuildSessionRequest_PublicKey(t *testing.T) {
 	authLine, _ := hostKeyMaterial(t, 0x40)
-	fr := &fakeResolver{route: &route.Route{IP: "172.29.4.11", Port: 22, User: "student", HostKeys: []string{authLine}}}
+	fr := &fakeResolver{route: &route.Route{IP: "172.29.4.11", Port: 22, User: "ubuntu", HostKeys: []string{authLine}}}
 	p := newPlugin(t, fr)
 	conn := fakeConn{user: "team-alpha-a1b2", remote: "203.0.113.7:54321", uid: "conn-pk"}
 	if _, err := p.publicKeyCallback(conn, userKeyWire(t)); err != nil {
@@ -468,7 +468,7 @@ func TestBuildSessionRequest_PublicKey(t *testing.T) {
 // the real key).
 func TestBuildSessionRequest_MultipleCandidatesAccumulate(t *testing.T) {
 	authLine, _ := hostKeyMaterial(t, 0x40)
-	fr := &fakeResolver{route: &route.Route{IP: "172.29.4.11", Port: 22, User: "student", HostKeys: []string{authLine}}}
+	fr := &fakeResolver{route: &route.Route{IP: "172.29.4.11", Port: 22, User: "ubuntu", HostKeys: []string{authLine}}}
 	p := newPlugin(t, fr)
 	conn := fakeConn{user: "slug", remote: "203.0.113.7:1", uid: "conn-multi"}
 
@@ -498,7 +498,7 @@ func TestBuildSessionRequest_MultipleCandidatesAccumulate(t *testing.T) {
 // even if an earlier publickey candidate was offered (last-write-wins).
 func TestBuildSessionRequest_Password(t *testing.T) {
 	authLine, _ := hostKeyMaterial(t, 0x55)
-	fr := &fakeResolver{route: &route.Route{IP: "172.29.4.11", Port: 22, User: "student", HostKeys: []string{authLine}}}
+	fr := &fakeResolver{route: &route.Route{IP: "172.29.4.11", Port: 22, User: "ubuntu", HostKeys: []string{authLine}}}
 	p := newPlugin(t, fr)
 	conn := fakeConn{user: "slug", remote: "203.0.113.7:1", uid: "conn-pw"}
 	// A publickey candidate offered first must not leak into a password session.
@@ -528,7 +528,7 @@ func TestBuildSessionRequest_NoAttribution(t *testing.T) {
 func TestPipeStart_EmitsSessionAudit(t *testing.T) {
 	authLine, _ := hostKeyMaterial(t, 0x40)
 	fr := &fakeResolver{
-		route:  &route.Route{IP: "172.29.4.11", Port: 22, User: "student", HostKeys: []string{authLine}},
+		route:  &route.Route{IP: "172.29.4.11", Port: 22, User: "ubuntu", HostKeys: []string{authLine}},
 		sessCh: make(chan struct{}, 1),
 	}
 	p := newPlugin(t, fr)
@@ -568,7 +568,7 @@ func TestPipeStart_NoAttributionSkips(t *testing.T) {
 func TestPipeStart_SessionFailureIsHarmless(t *testing.T) {
 	authLine, _ := hostKeyMaterial(t, 0x40)
 	fr := &fakeResolver{
-		route:   &route.Route{IP: "172.29.4.11", Port: 22, User: "student", HostKeys: []string{authLine}},
+		route:   &route.Route{IP: "172.29.4.11", Port: 22, User: "ubuntu", HostKeys: []string{authLine}},
 		sessErr: errors.New("api down"),
 		sessCh:  make(chan struct{}, 1),
 	}

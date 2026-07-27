@@ -10,7 +10,7 @@ import (
 func TestDialVM_HostKeyPinMatch(t *testing.T) {
 	vm := startFakeVM(t, fakeVMOpts{})
 	client, err := DialVM(context.Background(), DialParams{
-		Addr: vm.addr, User: "student",
+		Addr: vm.addr, User: "ubuntu",
 		HostKeys: []string{vm.hostKeyLine},
 		Signer:   newTestSigner(t), Timeout: 5 * time.Second,
 	})
@@ -30,7 +30,7 @@ func TestDialVM_HostKeyMismatchFailsClosed(t *testing.T) {
 	vm := startFakeVM(t, fakeVMOpts{})
 	other := startFakeVM(t, fakeVMOpts{}) // its host key line does not match vm
 	_, err := DialVM(context.Background(), DialParams{
-		Addr: vm.addr, User: "student",
+		Addr: vm.addr, User: "ubuntu",
 		HostKeys: []string{other.hostKeyLine},
 		Signer:   newTestSigner(t), Timeout: 5 * time.Second,
 	})
@@ -45,7 +45,7 @@ func TestDialVM_HostKeyMismatchFailsClosed(t *testing.T) {
 func TestDialVM_EmptyHostKeysFailsClosed(t *testing.T) {
 	vm := startFakeVM(t, fakeVMOpts{})
 	_, err := DialVM(context.Background(), DialParams{
-		Addr: vm.addr, User: "student",
+		Addr: vm.addr, User: "ubuntu",
 		HostKeys: nil,
 		Signer:   newTestSigner(t), Timeout: 5 * time.Second,
 	})
@@ -57,7 +57,7 @@ func TestDialVM_EmptyHostKeysFailsClosed(t *testing.T) {
 func TestDialVM_AllMalformedHostKeysFailClosed(t *testing.T) {
 	vm := startFakeVM(t, fakeVMOpts{})
 	_, err := DialVM(context.Background(), DialParams{
-		Addr: vm.addr, User: "student",
+		Addr: vm.addr, User: "ubuntu",
 		HostKeys: []string{"not-a-key", "also garbage"},
 		Signer:   newTestSigner(t), Timeout: 5 * time.Second,
 	})
@@ -71,7 +71,7 @@ func TestDialVM_AllMalformedHostKeysFailClosed(t *testing.T) {
 func TestDialVM_MixedHostKeysUsesValidLine(t *testing.T) {
 	vm := startFakeVM(t, fakeVMOpts{})
 	client, err := DialVM(context.Background(), DialParams{
-		Addr: vm.addr, User: "student",
+		Addr: vm.addr, User: "ubuntu",
 		HostKeys: []string{"garbage-line", vm.hostKeyLine},
 		Signer:   newTestSigner(t), Timeout: 5 * time.Second,
 	})

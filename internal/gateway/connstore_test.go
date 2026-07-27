@@ -12,7 +12,7 @@ func TestConnStore_MemoRoundTrip(t *testing.T) {
 	if _, ok := s.memoGet("c1", "fp1"); ok {
 		t.Fatal("empty store must miss")
 	}
-	want := &route.Route{IP: "172.29.4.11", Port: 22, User: "student"}
+	want := &route.Route{IP: "172.29.4.11", Port: 22, User: "ubuntu"}
 	s.memoPut("c1", "fp1", memoEntry{route: want})
 	got, ok := s.memoGet("c1", "fp1")
 	if !ok || got.route != want {
@@ -72,7 +72,7 @@ func TestConnStoreExpiry(t *testing.T) {
 	s := newConnStore(2 * time.Minute)
 	s.now = func() time.Time { return now }
 
-	s.memoPut("c1", "fp1", memoEntry{route: &route.Route{IP: "1.2.3.4", Port: 22, User: "student"}})
+	s.memoPut("c1", "fp1", memoEntry{route: &route.Route{IP: "1.2.3.4", Port: 22, User: "ubuntu"}})
 	s.putHostKeys("c1", []string{"ssh-ed25519 AAAA"})
 	s.addSessionCandidate("c1", "SHA256:abc")
 
