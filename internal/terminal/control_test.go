@@ -14,7 +14,7 @@ func controlBridge(t *testing.T, token, allowedIP string) *Bridge {
 	t.Helper()
 	cfg := Config{
 		APIBase: "http://x", GatewayToken: "g", ControlToken: token,
-		ConsoleOrigin: "https://pickle.pnuops.com", TerminalKeyFile: "x",
+		ConsoleOrigin: "https://pickle.pusan.ac.kr", TerminalKeyFile: "x",
 		WSAllowedSourceIP: "127.0.0.1", ControlAllowedSourceIP: allowedIP,
 	}
 	if err := cfg.Validate(); err != nil {
