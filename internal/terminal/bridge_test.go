@@ -16,7 +16,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const testOrigin = "https://pickle.pnuops.com"
+const testOrigin = "https://pickle.pusan.ac.kr"
 
 // testBridge wires a Bridge over a fakeAPI and a fakeVM, served on an httptest
 // server. cfgMut lets a test tweak timing knobs before Validate.
