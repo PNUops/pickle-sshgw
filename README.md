@@ -166,6 +166,7 @@ WireGuard 터널이 있는 환경을 전제합니다. `scripts/systemd/`의 유�
 
 ## 전체 아키텍처
 
+<!-- arch:begin — 저장소 공통 블록입니다. 손으로 고치지 마세요. -->
 ```mermaid
 flowchart LR
     subgraph ext [외부]
@@ -192,6 +193,7 @@ flowchart LR
         DB[(PostgreSQL)]
         PVE[Proxmox VE]
         VM[사용자 VM]
+        IB[pickle-image-builder]
     end
 
     B --> PN
@@ -218,6 +220,7 @@ flowchart LR
     A -->|도메인 설정| P
     P -.->|vhost 적용| VN
     PVE -.->|생성/제어| VM
+    IB -.->|템플릿 빌드| PVE
 ```
 
 | 저장소 | 역할 |
@@ -227,7 +230,9 @@ flowchart LR
 | [pickle-sshgw](https://github.com/PNUops/pickle-sshgw) | SSH 게이트웨이와 웹 터미널 브리지 (sshpiperd, Go) |
 | [pickle-proxy-agent](https://github.com/PNUops/pickle-proxy-agent) | nginx 리버스 프록시 제어 에이전트 (Go) |
 | [pickle-relay-agent](https://github.com/PNUops/pickle-relay-agent) | 오프캠퍼스 릴레이의 nftables DNAT 에이전트 (Go) |
+| [pickle-image-builder](https://github.com/PNUops/pickle-image-builder) | 사용자 VM OS 이미지 빌드 레시피 (shell, virt-customize) |
 | [pickle-infra](https://github.com/PNUops/pickle-infra) (비공개) | 인프라 프로비저닝 스크립트와 운영 런북 (shell) |
 | [pickle-infra-example](https://github.com/PNUops/pickle-infra-example) | 프로비저닝·배포 스크립트와 런북 샘플 |
 | [pickle-secrets](https://github.com/PNUops/pickle-secrets) (비공개) | 호스트 시크릿 볼트 (git-crypt) |
 | [pickle-secrets-example](https://github.com/PNUops/pickle-secrets-example) | 볼트 레이아웃과 git-crypt 운용 절차 |
+<!-- arch:end -->
