@@ -3,7 +3,7 @@
 부산대학교 클라우드 플랫폼(Pickle)의 SSH 게이트웨이입니다.
 
 사용자는 `ssh <vm슬러그>@ssh.pcl.kr` 한 줄로 자기 VM에 접속하고, 게이트웨이가
-슬러그를 보고 대상 VM으로 이어 줍니다. 웹 터미널의 데이터 플레인도 이 저장소의
+슬러그를 보고 대상 VM으로 이어 줍니다. 웹 터미널의 데이터 플레인도 이 레포지토리의
 데몬이 맡습니다.
 
 개인 식별에는 사용자가 콘솔에 등록한 SSH 공개키를 사용합니다. 누가 어느 VM에 들어갈 수
@@ -47,7 +47,7 @@ pickle-api ──티켓 발급·재검증·강제 종료──▶ 제어 포트:
 ## 주요 기능
 
 플랫폼은 VM 신청·승인·생성, SSH와 웹 터미널 접속, 도메인 공개, 만료와
-삭제까지를 다룹니다. 이 저장소가 맡는 부분은 아래와 같습니다.
+삭제까지를 다룹니다. 이 레포지토리가 맡는 부분은 아래와 같습니다.
 
 - **슬러그 접속**: VM의 내부 주소와 포트를 몰라도 슬러그 하나로 접속합니다.
 - **공개키 개인 식별**: 접속자는 콘솔에 등록한 공개키로 식별되며, 누가 언제 어느 VM에
@@ -63,7 +63,7 @@ pickle-api ──티켓 발급·재검증·강제 종료──▶ 제어 포트:
 
 ## 구성 바이너리
 
-커스텀 Go 바이너리 세 종을 이 저장소에서 빌드하고, `sshpiperd`는 업스트림
+커스텀 Go 바이너리 세 종을 이 레포지토리에서 빌드하고, `sshpiperd`는 업스트림
 (`github.com/tg123/sshpiper`) 바이너리를 수정 없이 사용합니다. 라우팅 플러그인이 같은
 버전을 `libplugin` SDK로 임포트하므로 바이너리와 SDK 버전은 함께 올려야 합니다.
 
@@ -149,7 +149,7 @@ WireGuard 터널이 있는 환경을 전제합니다. `scripts/systemd/`의 유�
 | `PICKLE_TERMINAL_MAX_FRAME` | bridge | WS 수신 프레임 상한. 큰 붙여넣기를 견디도록 1MiB | `1048576` |
 | `PICKLE_TERMINAL_MAX_SESSIONS` | bridge | 브리지 전역 동시 세션 상한 | `200` |
 
-모든 변수는 동명의 CLI 플래그로도 줄 수 있습니다. 자격증명 값은 이 저장소에 없습니다.
+모든 변수는 동명의 CLI 플래그로도 줄 수 있습니다. 자격증명 값은 이 레포지토리에 없습니다.
 
 </details>
 
@@ -166,6 +166,7 @@ WireGuard 터널이 있는 환경을 전제합니다. `scripts/systemd/`의 유�
 
 ## 전체 아키텍처
 
+<!-- arch:begin — 레포지토리 공통 블록입니다. 손으로 고치지 마세요. -->
 ```mermaid
 flowchart LR
     subgraph ext [외부]
@@ -192,6 +193,7 @@ flowchart LR
         DB[(PostgreSQL)]
         PVE[Proxmox VE]
         VM[사용자 VM]
+        IB[pickle-image-builder]
     end
 
     B --> PN
@@ -218,16 +220,19 @@ flowchart LR
     A -->|도메인 설정| P
     P -.->|vhost 적용| VN
     PVE -.->|생성/제어| VM
+    IB -.->|템플릿 빌드| PVE
 ```
 
-| 저장소 | 역할 |
+| 레포지토리 | 역할 |
 |---|---|
 | [pickle-api](https://github.com/PNUops/pickle-api) | REST API와 프로비저닝 워커 (Spring Boot 4, Java 25, PostgreSQL 18, JobRunr) |
 | [pickle-console](https://github.com/PNUops/pickle-console) | 사용자·관리자 웹 콘솔 (React 19, TypeScript) |
 | [pickle-sshgw](https://github.com/PNUops/pickle-sshgw) | SSH 게이트웨이와 웹 터미널 브리지 (sshpiperd, Go) |
 | [pickle-proxy-agent](https://github.com/PNUops/pickle-proxy-agent) | nginx 리버스 프록시 제어 에이전트 (Go) |
 | [pickle-relay-agent](https://github.com/PNUops/pickle-relay-agent) | 오프캠퍼스 릴레이의 nftables DNAT 에이전트 (Go) |
+| [pickle-image-builder](https://github.com/PNUops/pickle-image-builder) | 사용자 VM OS 이미지 빌드 레시피 (shell, virt-customize) |
 | [pickle-infra](https://github.com/PNUops/pickle-infra) (비공개) | 인프라 프로비저닝 스크립트와 운영 런북 (shell) |
 | [pickle-infra-example](https://github.com/PNUops/pickle-infra-example) | 프로비저닝·배포 스크립트와 런북 샘플 |
 | [pickle-secrets](https://github.com/PNUops/pickle-secrets) (비공개) | 호스트 시크릿 볼트 (git-crypt) |
 | [pickle-secrets-example](https://github.com/PNUops/pickle-secrets-example) | 볼트 레이아웃과 git-crypt 운용 절차 |
+<!-- arch:end -->
