@@ -105,7 +105,7 @@ scripts/systemd/            서비스 유닛 3종
 ## 시작하기
 
 ```bash
-scripts/verify.sh        # shellcheck → gofmt → go vet → build → test → 공개 위생 검사
+scripts/verify.sh        # shellcheck → gofmt → go vet → build → test
 scripts/build.sh         # → dist/ 에 바이너리 3종
 ```
 
