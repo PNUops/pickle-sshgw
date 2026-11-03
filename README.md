@@ -10,12 +10,12 @@
 
 ## 용어
 
-- **슬러그** — VM마다 부여되는 전역 고유 이름이에요. SSH 사용자명 자리에 들어가요.
-- **다운스트림 / 업스트림** — 클라이언트에서 게이트웨이까지 / 게이트웨이에서 VM까지의
+- **슬러그**: VM마다 부여되는 전역 고유 이름이에요. SSH 사용자명 자리에 들어가요.
+- **다운스트림 / 업스트림**: 클라이언트에서 게이트웨이까지 / 게이트웨이에서 VM까지의
   구간이에요. 업스트림 홉은 플랫폼 전용 ed25519 키로 인증해요.
-- **호스트키 핀** — 각 VM의 호스트키를 프로비저닝 때 수집해 고정해 두고, 이후 접속에서
+- **호스트키 핀**: 각 VM의 호스트키를 프로비저닝 때 수집해 고정해 두고, 이후 접속에서
   불일치하면 연결을 거부해요.
-- **라우트 API** — `POST /internal/sshgw/route`. 접속 권한을 판정하고 대상 주소를 돌려줘요.
+- **라우트 API**: `POST /internal/sshgw/route`. 접속 권한을 판정하고 대상 주소를 돌려줘요.
 
 ## 접속 경로
 
@@ -41,7 +41,7 @@ pickle-api ──티켓 발급·재검증·강제 종료──▶ 제어 포트:
 
 ## 주요 기능
 
-플랫폼은 VM 신청·승인·생성, SSH와 웹 터미널 접속, 도메인 공개, 만료와
+플랫폼은 VM 신청과 승인, 생성, SSH와 웹 터미널 접속, 도메인 공개, 만료와
 삭제까지를 다뤄요. 이 레포지토리가 맡는 부분은 아래와 같아요.
 
 - **슬러그 접속**: VM의 내부 주소와 포트를 몰라도 슬러그 하나로 접속해요.
@@ -72,15 +72,15 @@ internal/terminal/          WS ↔ 잠금 SSH 중계, 티켓 redeem, 재검증
 scripts/systemd/            서비스 유닛 3종
 ```
 
-1. **`sshgw-proxyfront`** — `:22` 인그레스 앞단의 얇은 심이에요. PROXY protocol v2 헤더를
+1. **`sshgw-proxyfront`**: `:22` 인그레스 진입부예요. PROXY protocol v2 헤더를
    필수로 요구하며, 헤더가 없거나 손상됐거나 WireGuard 피어 밖에서 온 연결은 SSH 바이트를
    한 바이트도 교환하지 않고 끊어요. 유효한 연결은 복원한 실제 클라이언트 IP를 담아 새
    PROXY 헤더로 loopback sshpiperd에 재발행해요.
-2. **`sshgw-route-plugin`** — sshpiperd의 gRPC 라우팅 플러그인이에요. SSH 사용자명과 실제
+2. **`sshgw-route-plugin`**: sshpiperd의 gRPC 라우팅 플러그인이에요. SSH 사용자명과 실제
    클라이언트 IP로 라우트 API를 호출하고, 응답받은 대상으로 파이핑해요. 조회가 거부되면
    세션도 거부해요. 토큰이나 API 주소, 업스트림 키 중 하나라도 없으면 기동하지 않아요.
-3. **`sshgw-terminal-bridge`** — 웹 터미널 WebSocket 종단(`:8082`)과 제어 포트(`:8083`)를
-   열어요. 브라우저 WS를 잠금 SSH 연결로 VM에 중계해요. 원타임 티켓 redeem과 60초
+3. **`sshgw-terminal-bridge`**: 웹 터미널 WebSocket 종단(`:8082`)과 제어 포트(`:8083`)를
+   열어요. 브라우저 WS를 호스트키를 검증하는 SSH 연결로 VM에 중계해요. 원타임 티켓 redeem과 60초
    재검증, 세션 감사는 pickle-api에 위임해요.
 
 ## 보안 경계
@@ -136,7 +136,7 @@ WireGuard 터널이 필요해요. 서비스 정의는 `scripts/systemd/`의 유�
 | `PICKLE_TERMINAL_KEY_FILE` | bridge | 터미널 ed25519 개인키 | `/etc/pickle/sshgw/terminal_ed25519_key` |
 | `PICKLE_TERMINAL_WS_PEER` | bridge | WS에 닿을 수 있는 유일한 피어(nginx TLS 계층) | `172.30.1.10` |
 | `PICKLE_TERMINAL_CONTROL_PEER` | bridge | 제어 포트의 유일한 피어(pickle-api) | `172.30.1.20` |
-| `PICKLE_TERMINAL_IDLE_TIMEOUT` | bridge | 입력 없는 세션을 닫기까지의 시간. resize·ping으로는 연장되지 않아요 | `15m` |
+| `PICKLE_TERMINAL_IDLE_TIMEOUT` | bridge | 입력 없는 세션을 닫기까지의 시간. resize나 ping으로는 연장되지 않아요 | `15m` |
 | `PICKLE_TERMINAL_PING_INTERVAL` | bridge | 서버 측 WS ping 주기 | `30s` |
 | `PICKLE_TERMINAL_REVALIDATE_INTERVAL` | bridge | 인가 재검증 폴링 주기 | `60s` |
 | `PICKLE_TERMINAL_MAX_FRAME` | bridge | WS 수신 프레임 상한. 큰 붙여넣기를 견디도록 1MiB | `1048576` |
@@ -152,10 +152,12 @@ WireGuard 터널이 필요해요. 서비스 정의는 `scripts/systemd/`의 유�
 |---|---|---|
 | `github.com/tg123/sshpiper` | v1.5.4 | 플러그인 SDK. sshpiperd 바이너리와 버전 고정 |
 | `github.com/coder/websocket` | v1.8.15 | 터미널 브리지 WS |
-| `github.com/pires/go-proxyproto` | v0.15.0 | PROXY v2 수용·재발행 |
+| `github.com/pires/go-proxyproto` | v0.15.0 | PROXY v2 수용과 재발행 |
 | `golang.org/x/crypto` | v0.54.0 | SSH 클라이언트, ed25519 |
-| `github.com/urfave/cli/v2` | v2.27.7 | 플래그·환경변수 파싱 |
+| `github.com/urfave/cli/v2` | v2.27.7 | 플래그와 환경변수 파싱 |
 | `github.com/sirupsen/logrus` | v1.9.4 | 구조화 로깅 |
+
+최종 갱신: 2026-11-03
 
 ## 전체 아키텍처
 
