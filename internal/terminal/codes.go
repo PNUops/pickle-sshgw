@@ -33,15 +33,15 @@ const (
 // Korean user-facing close messages, sent in the `exit` control frame just before
 // the WS close. Kept short enough to double as the WS close reason (<123 bytes).
 var closeMessages = map[websocket.StatusCode]string{
-	closeNormal:        "세션이 종료되었습니다.",
-	closeMaintenance:   "서버 점검 중입니다. 잠시 후 다시 연결해 주세요.",
-	closeTicketInvalid: "터미널 티켓이 유효하지 않거나 만료되었습니다. 다시 시도해 주세요.",
-	closeIdle:          "15분간 입력이 없어 세션을 종료했습니다.",
-	closeForce:         "관리자에 의해 세션이 종료되었습니다.",
-	closeVMNotRunning:  "VM이 실행 중이 아닙니다.",
-	closeAccessRevoked: "접근 권한이 변경되어 세션을 종료했습니다.",
-	closeDisabled:      "웹 터미널 기능이 비활성화되었습니다.",
-	closeConnFailed:    "연결에 실패했습니다. 잠시 후 다시 시도해 주세요.",
+	closeNormal:        "세션이 종료됐어요.",
+	closeMaintenance:   "연결이 종료됐어요. 잠시 후 다시 연결해 주세요.",
+	closeTicketInvalid: "접속 정보가 유효하지 않거나 만료됐어요. 다시 연결해 주세요.",
+	closeIdle:          "15분 동안 입력이 없어 연결이 종료됐어요.",
+	closeForce:         "관리자가 세션을 종료했어요.",
+	closeVMNotRunning:  "VM이 실행 중이 아니에요.",
+	closeAccessRevoked: "접근 권한이 바뀌어 연결이 종료됐어요.",
+	closeDisabled:      "웹 터미널이 비활성화되어 있어요.",
+	closeConnFailed:    "연결하지 못했어요. 잠시 후 다시 시도해 주세요.",
 }
 
 // closeMessage returns the Korean message for a close code, or a generic fallback.
@@ -49,7 +49,7 @@ func closeMessage(code websocket.StatusCode) string {
 	if m, ok := closeMessages[code]; ok {
 		return m
 	}
-	return "세션이 종료되었습니다."
+	return "세션이 종료됐어요."
 }
 
 // closeReason is the ASCII-safe short reason string put on the WS close frame
